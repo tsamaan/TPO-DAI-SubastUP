@@ -377,76 +377,390 @@ function Mensajes({ token, toast }) {
   )
 }
 
+// ── Estilos de input reutilizables ────────────────────────────
+const inputSt = {
+  background: '#0F0F0F',
+  border: '1px solid #333333',
+  color: '#F0F0F0',
+  borderRadius: 6,
+  padding: '7px 10px',
+  fontSize: 13,
+  width: '100%',
+}
+
+const ESTADO_COLORS = {
+  pendiente:         '#F57F17',
+  en_inspeccion:     '#1565C0',
+  esperando_usuario: '#6A0DAD',
+  confirmado:        '#2E7D32',
+  rechazado:         '#8B0000',
+  devuelto:          '#555555',
+}
+const ESTADO_LABELS = {
+  pendiente:         'Pendiente',
+  en_inspeccion:     'En inspección',
+  esperando_usuario: 'Esperando usuario',
+  confirmado:        'Confirmado',
+  rechazado:         'Rechazado',
+  devuelto:          'Devuelto',
+}
+
 // ── Sección: Bienes ────────────────────────────────────────────
 function Bienes({ token, toast }) {
-  const [bienes,  setBienes]  = useState([])
-  const [loading, setLoading] = useState(true)
-  const [motivos, setMotivos] = useState({})
+  const [bienes,        setBienes]        = useState([])
+  const [loading,       setLoading]       = useState(true)
+  const [filtro,        setFiltro]        = useState('')
+  const [expandido,     setExpandido]     = useState(null)
+  const [formData,      setFormData]      = useState({})
+  const [loadingAction, setLoadingAction] = useState(null)
 
   const fetchBienes = useCallback(async () => {
     setLoading(true)
-    const data = await api('/api/products/pending-review', 'GET', null, token)
-    setBienes(data.productos || [])
+    try {
+      // Intentar endpoint nuevo (backend local actualizado)
+      const url = filtro ? `/api/products?estado=${filtro}` : '/api/products'
+      const data = await api(url, 'GET', null, token)
+      if (data.ok) {
+        setBienes(data.productos || [])
+      } else {
+        // Fallback: endpoint viejo (producción / backend sin actualizar)
+        const fallback = await api('/api/products/pending-review', 'GET', null, token)
+        setBienes(fallback.productos || [])
+      }
+    } catch {
+      setBienes([])
+    }
     setLoading(false)
-  }, [token])
+  }, [token, filtro])
 
   useEffect(() => { fetchBienes() }, [fetchBienes])
 
-  const aprobar = async (id) => {
-    toast('Para aprobar, completá los datos de la propuesta desde la app móvil.', 'error')
+  const setForm = (productoId, field, value) =>
+    setFormData(prev => ({ ...prev, [productoId]: { ...(prev[productoId] || {}), [field]: value } }))
+
+  const getForm = (productoId) => formData[productoId] || {}
+
+  const accionEstado = async (productoId, estado) => {
+    setLoadingAction(productoId + '_estado')
+    const data = await api(`/api/products/${productoId}/status`, 'PUT', { estado }, token)
+    if (data.ok) { toast('Estado actualizado', 'ok'); fetchBienes() }
+    else toast(data.message || 'Error al actualizar estado', 'error')
+    setLoadingAction(null)
   }
 
-  const rechazar = async (id) => {
-    if (!motivos[id]?.trim()) { toast('Ingresá un motivo', 'error'); return }
-    const data = await api(`/api/products/${id}/reject`, 'PUT', { motivo: motivos[id], cargo: 0 }, token)
+  const accionPropuesta = async (productoId) => {
+    const f = getForm(productoId)
+    if (!f.precioBase || !f.fechaSubasta || !f.horaSubasta || !f.lugarSubasta) {
+      toast('Completá precio base, fecha, hora y lugar', 'error'); return
+    }
+    setLoadingAction(productoId + '_propuesta')
+    const data = await api(`/api/products/${productoId}/approve`, 'PUT', {
+      precioBase:   parseFloat(f.precioBase),
+      comision:     parseFloat(f.comision || 10),
+      moneda:       f.moneda || 'ARS',
+      fechaSubasta: f.fechaSubasta,
+      horaSubasta:  f.horaSubasta,
+      lugarSubasta: f.lugarSubasta,
+    }, token)
+    if (data.ok) { toast('Propuesta enviada al usuario', 'ok'); fetchBienes() }
+    else toast(data.message || 'Error al enviar propuesta', 'error')
+    setLoadingAction(null)
+  }
+
+  const accionRechazar = async (productoId) => {
+    const f = getForm(productoId)
+    if (!f.motivo?.trim()) { toast('Ingresá un motivo de rechazo', 'error'); return }
+    setLoadingAction(productoId + '_rechazar')
+    const data = await api(`/api/products/${productoId}/reject`, 'PUT', { motivo: f.motivo, cargo: parseFloat(f.cargo || 0) }, token)
     if (data.ok) { toast('Bien rechazado', 'ok'); fetchBienes() }
-    else toast(data.message, 'error')
+    else toast(data.message || 'Error al rechazar', 'error')
+    setLoadingAction(null)
   }
 
-  const cambiarEstado = async (id, estado) => {
-    toast(`Estado cambiado a: ${estado}`, 'ok')
-  }
-
-  if (loading) return <p style={{ color: C.textoGris }}>Cargando bienes...</p>
-  if (!bienes.length) return <p style={{ color: C.textoGris }}>No hay bienes pendientes.</p>
-
-  const ESTADOS = ['pendiente','en_inspeccion','aprobado','rechazado','esperando_usuario','confirmado','devuelto']
+  const FILTROS = ['', 'pendiente', 'en_inspeccion', 'esperando_usuario', 'confirmado', 'rechazado', 'devuelto']
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {bienes.map(b => (
-        <Card key={b.productoId}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-            <div>
-              <p style={{ fontWeight: 700, fontSize: 15 }}>{b.nombre}</p>
-              <p style={{ color: C.textoGris, fontSize: 13, marginTop: 2 }}>Dueño: {b.nombreDuenio} · {b.emailDuenio}</p>
-              <p style={{ color: C.textoGris, fontSize: 12, marginTop: 2 }}>{b.descripcionCompleta}</p>
-              <p style={{ color: C.textoGris, fontSize: 12, marginTop: 4 }}>{b.cantidadFotos} foto{b.cantidadFotos !== 1 ? 's' : ''}</p>
-              <div style={{ marginTop: 8 }}>
-                <Badge color={C.amarillo}>{b.estado}</Badge>
-              </div>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 220 }}>
-              <select
-                defaultValue={b.estado}
-                onChange={e => cambiarEstado(b.productoId, e.target.value)}
-                style={{ background: C.bg, color: C.texto, border: `1px solid ${C.cardBorder}`, borderRadius: 6, padding: '6px 10px', fontSize: 13 }}
+    <div>
+      {/* Filtros por estado */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+        {FILTROS.map(e => (
+          <button
+            key={e}
+            onClick={() => { setFiltro(e); setExpandido(null) }}
+            style={{
+              background:  filtro === e ? C.rojo : C.card,
+              color:       filtro === e ? C.blanco : C.textoGris,
+              border:      `1px solid ${filtro === e ? C.rojo : C.cardBorder}`,
+              borderRadius: 20,
+              padding:     '5px 14px',
+              fontSize:    12,
+              fontWeight:  600,
+              cursor:      'pointer',
+              transition:  'all 0.15s',
+            }}
+          >
+            {e === '' ? 'Todos' : ESTADO_LABELS[e] || e}
+          </button>
+        ))}
+        <button
+          onClick={fetchBienes}
+          style={{ background: 'transparent', color: C.textoGris, border: `1px solid ${C.cardBorder}`, borderRadius: 20, padding: '5px 14px', fontSize: 12, cursor: 'pointer' }}
+        >
+          ↺ Refrescar
+        </button>
+      </div>
+
+      {loading && <p style={{ color: C.textoGris }}>Cargando bienes...</p>}
+      {!loading && !bienes.length && <p style={{ color: C.textoGris }}>No hay bienes{filtro ? ` en estado "${ESTADO_LABELS[filtro]}"` : ''}.</p>}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {bienes.map(b => {
+          const isExp    = expandido === b.productoId
+          const f        = getForm(b.productoId)
+          const eColor   = ESTADO_COLORS[b.estado] || C.textoGris
+          const eLabel   = ESTADO_LABELS[b.estado] || b.estado
+          const terminal = ['confirmado', 'rechazado', 'devuelto'].includes(b.estado)
+
+          return (
+            <Card key={b.productoId}>
+              {/* ── Cabecera del card (siempre visible) ── */}
+              <div
+                onClick={() => setExpandido(isExp ? null : b.productoId)}
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', gap: 12 }}
               >
-                {ESTADOS.map(e => <option key={e} value={e}>{e}</option>)}
-              </select>
-              <input
-                placeholder="Motivo de rechazo"
-                value={motivos[b.productoId] || ''}
-                onChange={e => setMotivos(m => ({ ...m, [b.productoId]: e.target.value }))}
-                style={{ background: C.bg, border: `1px solid ${C.cardBorder}`, color: C.texto, borderRadius: 6, padding: '6px 10px', fontSize: 13 }}
-              />
-              <div style={{ display: 'flex', gap: 8 }}>
-                <Btn small color={C.rojo} onClick={() => rechazar(b.productoId)}>Rechazar</Btn>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontWeight: 700, fontSize: 15, marginBottom: 2 }}>{b.nombre}</p>
+                  <p style={{ color: C.textoGris, fontSize: 13 }}>
+                    {b.nombreDuenio} &middot; <span style={{ color: '#aaa' }}>{b.emailDuenio}</span>
+                  </p>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                  <Badge color={eColor}>{eLabel}</Badge>
+                  <span style={{ color: C.textoGris, fontSize: 14 }}>{isExp ? '▲' : '▼'}</span>
+                </div>
               </div>
-            </div>
-          </div>
-        </Card>
-      ))}
+
+              {/* ── Contenido expandido ── */}
+              {isExp && (
+                <div style={{ marginTop: 16, borderTop: `1px solid ${C.cardBorder}`, paddingTop: 16 }}>
+
+                  {/* Info básica */}
+                  <p style={{ color: C.textoGris, fontSize: 13, marginBottom: 6 }}>{b.descripcionCompleta}</p>
+                  <p style={{ color: C.textoGris, fontSize: 12, marginBottom: 16 }}>
+                    📷 {b.cantidadFotos} foto{b.cantidadFotos !== 1 ? 's' : ''}
+                    {b.motivoRechazo ? <span style={{ color: C.rojo }}> · Motivo rechazo: {b.motivoRechazo}</span> : null}
+                  </p>
+
+                  {/* Propuesta enviada (si existe) */}
+                  {b.propuesta && (
+                    <div style={{ background: '#181818', borderRadius: 8, padding: 14, marginBottom: 20, border: `1px solid ${C.cardBorder}` }}>
+                      <p style={{ fontWeight: 700, fontSize: 13, marginBottom: 10, color: C.texto }}>Propuesta enviada al dueño</p>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 24px', fontSize: 13 }}>
+                        <span style={{ color: C.textoGris }}>Precio base</span>
+                        <span style={{ color: C.texto, fontWeight: 600 }}>
+                          {b.propuesta.moneda} {Number(b.propuesta.precioBase).toLocaleString('es-AR')}
+                        </span>
+                        <span style={{ color: C.textoGris }}>Comisión</span>
+                        <span style={{ color: C.texto }}>{Number(b.propuesta.comision).toFixed(1)}%</span>
+                        {b.propuesta.fechaSubasta && <>
+                          <span style={{ color: C.textoGris }}>Fecha subasta</span>
+                          <span style={{ color: C.texto }}>
+                            {new Date(b.propuesta.fechaSubasta).toLocaleDateString('es-AR')} {b.propuesta.horaSubasta}
+                          </span>
+                        </>}
+                        {b.propuesta.lugarSubasta && <>
+                          <span style={{ color: C.textoGris }}>Lugar</span>
+                          <span style={{ color: C.texto }}>{b.propuesta.lugarSubasta}</span>
+                        </>}
+                      </div>
+                      <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.cardBorder}` }}>
+                        <span style={{ fontSize: 13, fontWeight: 700,
+                          color: b.propuesta.aceptadoPorDuenio === true
+                            ? C.verde
+                            : b.propuesta.aceptadoPorDuenio === false
+                            ? C.rojo
+                            : C.amarillo,
+                        }}>
+                          Respuesta del dueño:&nbsp;
+                          {b.propuesta.aceptadoPorDuenio === true  ? '✓ Aceptó la propuesta' :
+                           b.propuesta.aceptadoPorDuenio === false ? '✗ Rechazó la propuesta' :
+                           '⏳ Pendiente de respuesta'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── Acciones ── */}
+                  {!terminal && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+
+                      {/* Cambio de estado intermedio */}
+                      {b.estado === 'pendiente' && (
+                        <div>
+                          <p style={{ fontSize: 11, fontWeight: 700, color: '#1565C0', marginBottom: 8, letterSpacing: 0.5 }}>
+                            CAMBIAR ESTADO
+                          </p>
+                          <Btn
+                            small
+                            color="#1565C0"
+                            onClick={() => accionEstado(b.productoId, 'en_inspeccion')}
+                            disabled={loadingAction === b.productoId + '_estado'}
+                          >
+                            {loadingAction === b.productoId + '_estado' ? 'Actualizando...' : 'Marcar en inspección'}
+                          </Btn>
+                        </div>
+                      )}
+
+                      {/* Formulario de propuesta */}
+                      {b.estado !== 'esperando_usuario' && (
+                        <div style={{ gridColumn: b.estado === 'pendiente' ? 'auto' : '1 / -1' }}>
+                          <p style={{ fontSize: 11, fontWeight: 700, color: C.verde, marginBottom: 8, letterSpacing: 0.5 }}>
+                            {b.propuesta ? 'REENVIAR PROPUESTA' : 'ENVIAR PROPUESTA AL DUEÑO'}
+                          </p>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                            <div style={{ display: 'flex', gap: 7 }}>
+                              <input
+                                type="number"
+                                placeholder="Precio base *"
+                                value={f.precioBase || ''}
+                                onChange={e => setForm(b.productoId, 'precioBase', e.target.value)}
+                                style={{ ...inputSt, flex: 1 }}
+                              />
+                              <select
+                                value={f.moneda || 'ARS'}
+                                onChange={e => setForm(b.productoId, 'moneda', e.target.value)}
+                                style={{ ...inputSt, width: 76, flex: 'none' }}
+                              >
+                                <option value="ARS">ARS</option>
+                                <option value="USD">USD</option>
+                              </select>
+                            </div>
+                            <input
+                              type="number"
+                              placeholder="Comisión % (default 10)"
+                              value={f.comision || ''}
+                              onChange={e => setForm(b.productoId, 'comision', e.target.value)}
+                              style={inputSt}
+                            />
+                            <div style={{ display: 'flex', gap: 7 }}>
+                              <div style={{ flex: 1 }}>
+                                <label style={{ fontSize: 11, color: C.textoGris, display: 'block', marginBottom: 3 }}>Fecha subasta *</label>
+                                <input
+                                  type="date"
+                                  value={f.fechaSubasta || ''}
+                                  onChange={e => setForm(b.productoId, 'fechaSubasta', e.target.value)}
+                                  style={inputSt}
+                                />
+                              </div>
+                              <div style={{ flex: 1 }}>
+                                <label style={{ fontSize: 11, color: C.textoGris, display: 'block', marginBottom: 3 }}>Hora *</label>
+                                <input
+                                  type="time"
+                                  value={f.horaSubasta || ''}
+                                  onChange={e => setForm(b.productoId, 'horaSubasta', e.target.value)}
+                                  style={inputSt}
+                                />
+                              </div>
+                            </div>
+                            <input
+                              placeholder="Lugar de subasta *"
+                              value={f.lugarSubasta || ''}
+                              onChange={e => setForm(b.productoId, 'lugarSubasta', e.target.value)}
+                              style={inputSt}
+                            />
+                            <Btn
+                              small
+                              color={C.verde}
+                              onClick={() => accionPropuesta(b.productoId)}
+                              disabled={loadingAction === b.productoId + '_propuesta'}
+                            >
+                              {loadingAction === b.productoId + '_propuesta' ? 'Enviando...' : b.propuesta ? '↺ Reenviar propuesta' : '✓ Enviar propuesta'}
+                            </Btn>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Si está esperando usuario mostrar aviso */}
+                      {b.estado === 'esperando_usuario' && (
+                        <div style={{ gridColumn: '1 / -1' }}>
+                          <p style={{ color: '#6A0DAD', fontSize: 13, fontStyle: 'italic' }}>
+                            Propuesta enviada — esperando respuesta del dueño.
+                            Podés reenviar la propuesta con otros valores usando el formulario de abajo.
+                          </p>
+                          <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 7 }}>
+                            <p style={{ fontSize: 11, fontWeight: 700, color: C.verde, letterSpacing: 0.5 }}>REENVIAR PROPUESTA</p>
+                            <div style={{ display: 'flex', gap: 7 }}>
+                              <input
+                                type="number"
+                                placeholder="Nuevo precio base"
+                                value={f.precioBase || ''}
+                                onChange={e => setForm(b.productoId, 'precioBase', e.target.value)}
+                                style={{ ...inputSt, flex: 1 }}
+                              />
+                              <select
+                                value={f.moneda || 'ARS'}
+                                onChange={e => setForm(b.productoId, 'moneda', e.target.value)}
+                                style={{ ...inputSt, width: 76, flex: 'none' }}
+                              >
+                                <option value="ARS">ARS</option>
+                                <option value="USD">USD</option>
+                              </select>
+                            </div>
+                            <input type="number" placeholder="Comisión %" value={f.comision || ''} onChange={e => setForm(b.productoId, 'comision', e.target.value)} style={inputSt} />
+                            <div style={{ display: 'flex', gap: 7 }}>
+                              <div style={{ flex: 1 }}>
+                                <label style={{ fontSize: 11, color: C.textoGris, display: 'block', marginBottom: 3 }}>Fecha subasta</label>
+                                <input type="date" value={f.fechaSubasta || ''} onChange={e => setForm(b.productoId, 'fechaSubasta', e.target.value)} style={inputSt} />
+                              </div>
+                              <div style={{ flex: 1 }}>
+                                <label style={{ fontSize: 11, color: C.textoGris, display: 'block', marginBottom: 3 }}>Hora</label>
+                                <input type="time" value={f.horaSubasta || ''} onChange={e => setForm(b.productoId, 'horaSubasta', e.target.value)} style={inputSt} />
+                              </div>
+                            </div>
+                            <input placeholder="Lugar" value={f.lugarSubasta || ''} onChange={e => setForm(b.productoId, 'lugarSubasta', e.target.value)} style={inputSt} />
+                            <Btn small color={C.verde} onClick={() => accionPropuesta(b.productoId)} disabled={loadingAction === b.productoId + '_propuesta'}>
+                              {loadingAction === b.productoId + '_propuesta' ? 'Enviando...' : '↺ Reenviar propuesta'}
+                            </Btn>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── Sección rechazo (visible salvo estados terminales) ── */}
+                  {!terminal && (
+                    <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid ${C.cardBorder}` }}>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: C.rojo, marginBottom: 8, letterSpacing: 0.5 }}>RECHAZAR BIEN</p>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <input
+                          placeholder="Motivo de rechazo *"
+                          value={f.motivo || ''}
+                          onChange={e => setForm(b.productoId, 'motivo', e.target.value)}
+                          style={{ ...inputSt, flex: 1 }}
+                        />
+                        <Btn small color={C.rojo} onClick={() => accionRechazar(b.productoId)} disabled={loadingAction === b.productoId + '_rechazar'}>
+                          {loadingAction === b.productoId + '_rechazar' ? '...' : 'Rechazar'}
+                        </Btn>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Estado terminal informativo */}
+                  {terminal && (
+                    <div style={{ padding: '12px 16px', background: '#181818', borderRadius: 8, border: `1px solid ${eColor}44` }}>
+                      <p style={{ color: eColor, fontWeight: 700, fontSize: 13 }}>
+                        {b.estado === 'confirmado'  ? '✓ El dueño aceptó la propuesta. La subasta fue generada.' :
+                         b.estado === 'rechazado'   ? '✗ Este bien fue rechazado por el revisor.' :
+                         b.estado === 'devuelto'    ? '↩ El dueño rechazó la propuesta. El bien será devuelto.' : eLabel}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </Card>
+          )
+        })}
+      </div>
     </div>
   )
 }

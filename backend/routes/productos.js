@@ -11,8 +11,10 @@ const {
   eliminarProducto,
   responderPropuesta,
   productosPendientes,
+  todosLosProductos,
   aprobarProducto,
   rechazarProducto,
+  cambiarEstado,
 } = require('../controllers/productosController');
 
 router.use(auth);
@@ -25,8 +27,10 @@ router.get('/pending-review',             productosPendientes);
 router.put('/:id/respond',                responderPropuesta);
 
 // Revisor / Admin
+router.get('/',                           todosLosProductos);
 router.put('/:id/approve',                aprobarProducto);
 router.put('/:id/reject',                 rechazarProducto);
+router.put('/:id/status',                 cambiarEstado);
 
 router.get('/:id',                        detalleProducto);
 router.delete('/:id',                     eliminarProducto);

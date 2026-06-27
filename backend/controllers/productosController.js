@@ -426,15 +426,26 @@ exports.responderPropuesta = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────
 // GET /api/productos/revision/pendientes  (revisor/admin)
-// Lista productos pendientes de revisión
+// Lista productos pendientes de revisión (alias del endpoint general filtrado)
 // ─────────────────────────────────────────────────────────────
 exports.productosPendientes = async (req, res) => {
+  req.query.estado = 'pendiente';
+  return exports.todosLosProductos(req, res);
+};
+
+// ─────────────────────────────────────────────────────────────
+// GET /api/products?estado=...  (revisor/admin)
+// Lista todos los productos con filtro opcional por estado
+// ─────────────────────────────────────────────────────────────
+exports.todosLosProductos = async (req, res) => {
   try {
     if (req.user.rol !== 'revisor' && req.user.rol !== 'admin')
       return res.status(403).json({ ok: false, message: 'Acceso denegado.' });
 
+    const { estado } = req.query;
+
     const productos = await prisma.productos.findMany({
-      where:   { detalle: { estado: 'pendiente' } },
+      where:   estado ? { detalle: { estado } } : undefined,
       orderBy: { fecha: 'desc' },
       include: {
         detalle: true,
@@ -442,41 +453,129 @@ exports.productosPendientes = async (req, res) => {
           include: {
             personas: {
               include: {
-                registros: {
-                  select: { email: true },
-                },
+                registros: { select: { email: true }, take: 1 },
               },
             },
           },
         },
-        fotos: true,
+        _count: { select: { fotos: true } },
+        itemsCatalogo: {
+          take: 1,
+          select: {
+            identificador: true,
+            precioBase:    true,
+            comision:      true,
+            detalle:       true,
+          },
+        },
       },
     });
 
-    const resultado = productos.map((p) => ({
-      productoId:          p.identificador,
-      nombre:              p.detalle?.nombre || 'Producto',
-      descripcionCompleta: p.descripcionCompleta,
-      estado:              p.detalle?.estado || 'pendiente',
-      fecha:               p.fecha,
-      nombreDuenio:        p.duenios.personas.nombre,
-      emailDuenio:         p.duenios.personas.registros?.[0]?.email || null,
-      cantidadFotos:       p.fotos.length,
-    }));
+    const resultado = productos.map((p) => {
+      const item = p.itemsCatalogo?.[0] || null;
+      return {
+        productoId:          p.identificador,
+        nombre:              p.detalle?.nombre || 'Producto',
+        descripcionCompleta: p.descripcionCompleta,
+        estado:              p.detalle?.estado || 'pendiente',
+        motivoRechazo:       p.detalle?.motivoRechazo || null,
+        fecha:               p.fecha,
+        nombreDuenio:        p.duenios?.personas?.nombre || '—',
+        emailDuenio:         p.duenios?.personas?.registros?.[0]?.email || null,
+        cantidadFotos:       p._count.fotos,
+        propuesta:           item ? {
+          itemId:            item.identificador,
+          precioBase:        item.precioBase,
+          comision:          item.comision,
+          moneda:            item.detalle?.moneda || 'ARS',
+          fechaSubasta:      item.detalle?.fechaSubasta || null,
+          horaSubasta:       item.detalle?.horaSubasta  || null,
+          lugarSubasta:      item.detalle?.lugarSubasta || null,
+          aceptadoPorDuenio: item.detalle?.aceptadoPorDuenio ?? null,
+        } : null,
+      };
+    });
 
     return res.json({ ok: true, productos: resultado });
 
   } catch (err) {
-    console.error('productosPendientes error:', err);
-    return res.status(500).json({ ok: false, message: 'Error al obtener productos pendientes.' });
+    console.error('todosLosProductos error:', err);
+    return res.status(500).json({ ok: false, message: 'Error al obtener productos.' });
   }
 };
 
 // ─────────────────────────────────────────────────────────────
-// PUT /api/productos/:id/aprobar  (revisor/admin)
-// Aprueba el producto y envía propuesta al usuario
-// Body: { precioBase, comision, fechaSubasta, horaSubasta,
-//         lugarSubasta, catalogoId, direccionEnvio? }
+// PUT /api/products/:id/status  (revisor/admin)
+// Cambia el estado intermedio del producto (ej: en_inspeccion)
+// Body: { estado }
+// ─────────────────────────────────────────────────────────────
+exports.cambiarEstado = async (req, res) => {
+  try {
+    if (req.user.rol !== 'revisor' && req.user.rol !== 'admin')
+      return res.status(403).json({ ok: false, message: 'Acceso denegado.' });
+
+    const { personaId } = req.user;
+    const id = parseInt(req.params.id);
+    const { estado } = req.body;
+
+    const ESTADOS_PERMITIDOS = ['pendiente', 'en_inspeccion'];
+    if (!ESTADOS_PERMITIDOS.includes(estado))
+      return res.status(400).json({ ok: false, message: `Estado inválido. Permitidos: ${ESTADOS_PERMITIDOS.join(', ')}.` });
+
+    const producto = await prisma.productos.findFirst({
+      where:   { identificador: id },
+      include: { detalle: true },
+    });
+    if (!producto)
+      return res.status(404).json({ ok: false, message: 'Producto no encontrado.' });
+
+    const MENSAJES = {
+      en_inspeccion: 'Tu artículo fue recibido y está siendo inspeccionado físicamente por nuestro equipo.',
+      pendiente:     'Tu artículo volvió a la cola de revisión inicial.',
+    };
+
+    await prisma.$transaction(async (tx) => {
+      await tx.productosDetalle.update({
+        where: { producto: id },
+        data:  { estado },
+      });
+
+      const conversacion = await tx.conversaciones.findFirst({ where: { producto: id } });
+      if (conversacion) {
+        await tx.mensajes.create({
+          data: {
+            conversacion: conversacion.identificador,
+            emisor:       personaId,
+            texto:        MENSAJES[estado] || `Estado actualizado a: ${estado}.`,
+            leido:        false,
+          },
+        });
+      }
+
+      await tx.notificaciones.create({
+        data: {
+          persona: producto.duenio,
+          titulo:  'Estado de tu artículo actualizado',
+          mensaje: `${producto.detalle?.nombre || 'Tu artículo'}: ${MENSAJES[estado] || 'el estado fue actualizado.'}`,
+          tipo:    'producto_estado',
+        },
+      });
+    });
+
+    return res.json({ ok: true, message: 'Estado actualizado correctamente.' });
+
+  } catch (err) {
+    console.error('cambiarEstado error:', err);
+    return res.status(500).json({ ok: false, message: 'Error al cambiar el estado.' });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────
+// PUT /api/products/:id/approve  (revisor/admin)
+// Aprueba el producto, crea la subasta automáticamente y envía
+// propuesta al usuario (estado → esperando_usuario).
+// Body: { precioBase, comision?, moneda?, fechaSubasta,
+//         horaSubasta, lugarSubasta, direccionEnvio? }
 // ─────────────────────────────────────────────────────────────
 exports.aprobarProducto = async (req, res) => {
   try {
@@ -485,24 +584,27 @@ exports.aprobarProducto = async (req, res) => {
 
     const { personaId } = req.user;
     const id = parseInt(req.params.id);
-    const { precioBase, comision, fechaSubasta, horaSubasta, lugarSubasta, catalogoId, direccionEnvio } = req.body;
+    const {
+      precioBase,
+      comision    = 10,
+      moneda      = 'ARS',
+      fechaSubasta,
+      horaSubasta,
+      lugarSubasta,
+      direccionEnvio,
+    } = req.body;
 
-    if (!precioBase || !comision || !fechaSubasta || !horaSubasta || !lugarSubasta || !catalogoId)
-      return res.status(400).json({ ok: false, message: 'Faltan datos de la propuesta.' });
+    if (!precioBase || !fechaSubasta || !horaSubasta || !lugarSubasta)
+      return res.status(400).json({ ok: false, message: 'Faltan datos: precioBase, fechaSubasta, horaSubasta, lugarSubasta.' });
 
-    // Verificar que sea empleado
-    const empleado = await prisma.empleados.findFirst({
-      where: { identificador: personaId },
-    });
-
+    const empleado = await prisma.empleados.findFirst({ where: { identificador: personaId } });
     if (!empleado)
       return res.status(403).json({ ok: false, message: 'Solo empleados pueden aprobar productos.' });
 
     const productoActual = await prisma.productos.findFirst({
-      where: { identificador: id },
-      include: { detalle: true },
+      where:   { identificador: id },
+      include: { detalle: true, itemsCatalogo: { take: 1 } },
     });
-
     if (!productoActual)
       return res.status(404).json({ ok: false, message: 'Producto no encontrado.' });
 
@@ -516,95 +618,69 @@ exports.aprobarProducto = async (req, res) => {
         },
       });
 
-      let catalogoDestinoId = parseInt(catalogoId, 10);
-      const catalogoBase = await tx.catalogos.findFirst({
-        where: { identificador: catalogoDestinoId },
-        include: {
-          subastas: true,
-          _count: { select: { itemsCatalogo: true } },
-        },
-      });
+      const subastador = await tx.subastadores.findFirst();
 
-      if (!catalogoBase)
-        throw new Error('Catálogo no encontrado.');
+      let itemExistente = productoActual.itemsCatalogo?.[0] || null;
+      let itemId;
 
-      let item = await tx.itemsCatalogo.findFirst({ where: { producto: id } });
-
-      const crearCatalogoUnitario = async (baseCatalogo) => {
-        const subastaBase = baseCatalogo.subastas;
+      if (itemExistente) {
+        // Re-envío de propuesta: actualizar precio y detalle existentes
+        await tx.itemsCatalogo.update({
+          where: { identificador: itemExistente.identificador },
+          data:  { precioBase: parseFloat(precioBase), comision: parseFloat(comision), subastado: 'no' },
+        });
+        await tx.itemsCatalogoDetalle.upsert({
+          where:  { item: itemExistente.identificador },
+          create: { item: itemExistente.identificador, moneda, fechaSubasta: new Date(fechaSubasta), horaSubasta, lugarSubasta },
+          update: { moneda, fechaSubasta: new Date(fechaSubasta), horaSubasta, lugarSubasta, cerrado: false, ultimaPuja: null, aceptadoPorDuenio: null },
+        });
+        itemId = itemExistente.identificador;
+      } else {
+        // Primera propuesta: crear subasta → catálogo → ítem → detalle
         const nuevaSubasta = await tx.subastas.create({
           data: {
             fecha:               new Date(fechaSubasta),
             hora:                horaTextoADate(horaSubasta),
-            estado:              subastaBase?.estado || 'programada',
-            subastador:          subastaBase?.subastador || null,
+            estado:              'programada',
+            subastador:          subastador?.identificador || null,
             ubicacion:           lugarSubasta,
-            capacidadAsistentes: subastaBase?.capacidadAsistentes || 100,
-            tieneDeposito:       subastaBase?.tieneDeposito || 'si',
-            seguridadPropia:     subastaBase?.seguridadPropia || 'si',
-            categoria:           subastaBase?.categoria || 'comun',
+            capacidadAsistentes: 100,
+            tieneDeposito:       'si',
+            seguridadPropia:     'si',
+            categoria:           'comun',
           },
         });
 
         const nuevoCatalogo = await tx.catalogos.create({
           data: {
-            descripcion: `${baseCatalogo.descripcion} - producto ${id}`,
+            descripcion: `Subasta artículo #${id}`,
             subasta:     nuevaSubasta.identificador,
-            responsable: baseCatalogo.responsable,
+            responsable: empleado.identificador,
           },
         });
 
-        return nuevoCatalogo.identificador;
-      };
-
-      // Regla de negocio: una subasta publicada en una card tiene un solo artículo.
-      // Si el catálogo elegido ya tiene otro ítem, se crea una subasta/catálogo propio
-      // para este producto sin modificar las tablas base.
-      if (!item && catalogoBase._count.itemsCatalogo > 0) {
-        catalogoDestinoId = await crearCatalogoUnitario(catalogoBase);
-      }
-
-      if (item) {
-        const catalogoActual = await tx.catalogos.findFirst({
-          where: { identificador: item.catalogo },
-          include: {
-            subastas: true,
-            _count: { select: { itemsCatalogo: true } },
-          },
-        });
-
-        if (catalogoActual?._count?.itemsCatalogo > 1) {
-          catalogoDestinoId = await crearCatalogoUnitario(catalogoActual);
-        }
-      }
-
-      if (item) {
-        item = await tx.itemsCatalogo.update({
-          where: { identificador: item.identificador },
+        const nuevoItem = await tx.itemsCatalogo.create({
           data: {
-            catalogo:   catalogoDestinoId,
+            catalogo:   nuevoCatalogo.identificador,
+            producto:   id,
             precioBase: parseFloat(precioBase),
             comision:   parseFloat(comision),
             subastado:  'no',
           },
         });
-      } else {
-        item = await tx.itemsCatalogo.create({
+
+        await tx.itemsCatalogoDetalle.create({
           data: {
-            catalogo:     catalogoDestinoId,
-            producto:     id,
-            precioBase:   parseFloat(precioBase),
-            comision:     parseFloat(comision),
-            subastado:    'no',
+            item:         nuevoItem.identificador,
+            moneda,
+            fechaSubasta: new Date(fechaSubasta),
+            horaSubasta,
+            lugarSubasta,
           },
         });
-      }
 
-      await tx.itemsCatalogoDetalle.upsert({
-        where: { item: item.identificador },
-        create: { item: item.identificador, fechaSubasta: new Date(fechaSubasta), horaSubasta, lugarSubasta },
-        update: { fechaSubasta: new Date(fechaSubasta), horaSubasta, lugarSubasta, ultimaPuja: null, cerrado: false },
-      });
+        itemId = nuevoItem.identificador;
+      }
 
       const conversacion = await tx.conversaciones.findFirst({ where: { producto: id } });
       if (conversacion) {
@@ -612,7 +688,7 @@ exports.aprobarProducto = async (req, res) => {
           data: {
             conversacion: conversacion.identificador,
             emisor:       personaId,
-            texto:        `Tu artículo fue aprobado y tenemos una propuesta con precio base ${precioBase}. Revisá el detalle del artículo para aceptar o rechazar.`,
+            texto:        `Tu artículo fue aprobado. Te enviamos una propuesta con precio base ${moneda} ${precioBase}. Revisá el detalle del artículo para aceptar o rechazar.`,
             leido:        false,
           },
         });
@@ -622,13 +698,13 @@ exports.aprobarProducto = async (req, res) => {
         data: {
           persona: productoActual.duenio,
           titulo:  'Propuesta disponible',
-          mensaje: `${productoActual.detalle?.nombre || 'Tu artículo'} fue aprobado. Revisá la propuesta final.`,
+          mensaje: `${productoActual.detalle?.nombre || 'Tu artículo'} fue aprobado. Revisá la propuesta en tus artículos.`,
           tipo:    'producto_propuesta',
         },
       });
     });
 
-    return res.json({ ok: true, message: 'Producto aprobado. Se notificó al usuario.' });
+    return res.json({ ok: true, message: 'Propuesta enviada al usuario.' });
 
   } catch (err) {
     console.error('aprobarProducto error:', err);
