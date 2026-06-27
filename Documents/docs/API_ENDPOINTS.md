@@ -10,7 +10,7 @@ Referencia de todos los endpoints HTTP del backend (`backend/`, Node + Express +
 
 > Los routers se montan en `backend/server.js`. `routes/perfil.js` y `routes/estadisticas.js` existen pero **no están montados**: el perfil y las estadísticas se sirven por `/api/users/me*`.
 
-> 📮 **Postman:** importá [`SubastUP.postman_collection.json`](SubastUP.postman_collection.json) (63 requests). Corré *Auth → Login* y el token queda guardado solo para el resto de las llamadas.
+> 📮 **Postman:** importá [`SubastUP.postman_collection.json`](SubastUP.postman_collection.json) (65 requests). Corré *Auth → Login* y el token queda guardado solo para el resto de las llamadas.
 
 ## Índice por área
 
@@ -215,6 +215,20 @@ Todas requieren **Bearer token**.
 - **Descripción:** Productos pendientes de revisión.
 - **Respuesta:** `{ ok, productos: [{ productoId, nombre, descripcionCompleta, estado, fecha, nombreDuenio, emailDuenio, cantidadFotos }] }`.
 - **Errores:** `403` rol no autorizado.
+
+### GET /api/products
+- **Auth:** Bearer + rol `revisor`/`admin`
+- **Descripción:** Lista todos los productos para el WebAdmin. Acepta filtro opcional por estado y devuelve la misma estructura enriquecida que usa la pestaña **Bienes**.
+- **Request:** query `estado?` (`pendiente`, `en_inspeccion`, `esperando_usuario`, `confirmado`, `rechazado`, `devuelto`, etc.).
+- **Respuesta:** `{ ok, productos: [{ productoId, nombre, descripcionCompleta, estado, motivoRechazo, fecha, nombreDuenio, emailDuenio, cantidadFotos, propuesta }] }`.
+- **Errores:** `403` rol no autorizado.
+
+### PUT /api/products/:id/status
+- **Auth:** Bearer + rol `revisor`/`admin`
+- **Descripción:** Cambia estados intermedios del producto desde WebAdmin y notifica al dueño.
+- **Request:** path `:id`; body `estado` (`pendiente` | `en_inspeccion`).
+- **Respuesta:** `{ ok, message, estado }`.
+- **Errores:** `400` estado inválido; `403` rol no autorizado; `404` producto no encontrado.
 
 ### PUT /api/products/:id/respond
 - **Auth:** Bearer (dueño)

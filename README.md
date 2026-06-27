@@ -41,4 +41,4 @@ El backend monta estas areas:
 - `/api/dev`
 - `/health`
 
-Total documentado: 63 endpoints.
+Total documentado: 65 endpoints.

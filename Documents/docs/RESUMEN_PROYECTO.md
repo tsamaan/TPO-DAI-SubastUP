@@ -141,7 +141,7 @@ App de un solo archivo (`App.jsx`) en React + Vite. `BASE_URL = import.meta.env.
 | --- | --- | --- |
 | **Usuarios** | Ver pendientes, aprobar/rechazar, asignar categoría | `/api/auth/pendientes`, `/validate-user`, `/asignar-categoria` |
 | **Mensajes** | Listar conversaciones y responder | `/api/chats`, `/api/chats/:id/messages` |
-| **Bienes** | Revisar productos pendientes, rechazar | `/api/products/pending-review`, `/api/products/:id/reject` |
+| **Bienes** | Listar/revisar bienes, cambiar estado, aprobar propuestas o rechazar | `/api/products`, `/api/products/:id/status`, `/api/products/:id/approve`, `/api/products/:id/reject` |
 | **Métodos de pago** | Ver pagos sin verificar y verificar | `/api/settings/payment-methods/pending-verification`, `/:id/verify` |
 
 ## 7. Base de datos (tablas)
@@ -164,7 +164,7 @@ Detalle completo en [`API_ENDPOINTS.md`](API_ENDPOINTS.md). Resumen por área:
 | Auth | `/api/auth` | login, register, validate-user, pendientes, asignar-categoria |
 | Usuarios | `/api/users/me*` | perfil, bids, stats, auctions |
 | Subastas | `/api/auctions` | listado, calendar, today, detalle, upload-images |
-| Productos | `/api/products` | mine, pending-review, approve, reject, respond |
+| Productos | `/api/products` | mine, pending-review, listado admin, status, approve, reject, respond |
 | Pujas | `/api/bids` | `:itemId/status`, `POST /` (pujar) |
 | Chat | `/api/chats` | conversaciones, mensajes, create |
 | Notificaciones | `/api/notifications` | listar, unread-count, subscribe (campanita) |

@@ -7,7 +7,7 @@ Documentación técnica del proyecto (backend Node/Express + Prisma + PostgreSQL
 | [`RESUMEN_PROYECTO.md`](RESUMEN_PROYECTO.md) | **Resumen integral**: arquitectura, flujo, árbol de archivos, capas, base de datos, endpoints, seed, despliegue y guía rápida. Hay versión **[PDF](RESUMEN_PROYECTO.pdf)**. |
 | [`API_ENDPOINTS.md`](API_ENDPOINTS.md) | Referencia limpia de **todos los endpoints** (método, auth, request, response, errores). |
 | [`../SubastUp_API_Endpoints_v3_FINAL.xlsx`](../SubastUp_API_Endpoints_v3_FINAL.xlsx) | Excel final consolidado con el mismo contrato que el backend y la referencia Markdown. |
-| [`SubastUP.postman_collection.json`](SubastUP.postman_collection.json) | **Colección Postman** lista para importar (63 requests, token automático). |
+| [`SubastUP.postman_collection.json`](SubastUP.postman_collection.json) | **Colección Postman** lista para importar (65 requests, token automático). |
 | [`CAMBIOS_f8aa32b_a_HEAD.md`](CAMBIOS_f8aa32b_a_HEAD.md) | **Cambios** desde el commit `f8aa32b` hasta el actual, por tema. |
 | [`DESPLIEGUE.md`](DESPLIEGUE.md) | Cómo **levantar cada cosa** en local y cómo **volver a Supabase + Railway/Render**. Tabla de variables de entorno. |
 | [`RESEED_Y_DATOS.md`](RESEED_Y_DATOS.md) | Qué **datos crea el reseed** (cuentas, subastas, bienes, conversaciones) y cómo probar el flujo. |
