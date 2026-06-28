@@ -41,6 +41,7 @@ const obtenerNombreMetodo = (metodo) => {// Control: evalua una condicion para d
   if (metodo.tipo === 'banco') // Render: devuelve el resultado que consume React o la funcion llamadora.
     return metodo.alias || `Cuenta ${metodo.cbu || ''}`.trim(); // Render: devuelve el resultado que consume React o la funcion llamadora.
   return `Cheque ${metodo.numeroCheque || ''}`.trim();}; // ─── Pantalla ─────────────────────────────────────────────────────────────────
+const formatearMonto = (valor) => `ARS ${Number(valor || 0).toLocaleString('es-AR')}`;
 // Explica: exporta este modulo para que otras partes de la app lo usen.
 export default // Explica: declara la funcion MetodosDePagoScreen que concentra una parte del flujo.
 function MetodosDePagoScreen({ navigation }) {// Explica: define insets usando el resultado de useSafeAreaInsets.
@@ -105,7 +106,10 @@ function MetodosDePagoScreen({ navigation }) {// Explica: define insets usando e
         <View style={styles.iconoWrapper}>
           <Ionicons name={iconName} size={22} color="#8b0000" />
         </View>
-        <Text style={styles.metodoNombre}>{item.nombre}</Text>
+        <View style={styles.metodoTexto}>
+          <Text style={styles.metodoNombre}>{item.nombre}</Text>
+          {item.tipo === 'cheque' && item.monto ? <Text style={styles.metodoSubtitulo}>Tope de puja: {formatearMonto(item.monto)}</Text> : null}
+        </View>
         <Ionicons name="chevron-forward" size={22} color="#1A1A1A" />
       </TouchableOpacity>);}; // Render: devuelve el resultado que consume React o la funcion llamadora.
   return (// UI: renderiza el componente View.
@@ -219,11 +223,18 @@ const styles = StyleSheet.create({ container: { flex: 1, backgroundColor: '#FFFF
       justifyContent: 'center',
       marginRight: 14
     },
-    metodoNombre: {
+    metodoTexto: {
       flex: 1,
+    },
+    metodoNombre: {
       fontSize: 16,
       fontWeight: '500',
       color: '#1A1A1A'
+    },
+    metodoSubtitulo: {
+      marginTop: 2,
+      fontSize: 12,
+      color: '#777777'
     },
     itemSeparator: { height: 14 },
 

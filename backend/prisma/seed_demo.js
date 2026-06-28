@@ -312,6 +312,14 @@ async function seedDemo(prisma) {
     await prisma.fotos.createMany({
       data: COLORES.slice(0, 2).map((color) => ({ producto: producto.identificador, foto: pngDemo(color) })),
     });
+    await prisma.notificaciones.create({
+      data: {
+        persona: duenioId,
+        titulo: 'Producto enviado',
+        mensaje: `Recibimos ${bien.nombre}. Revisá el chat para seguir el proceso.`,
+        tipo: 'producto_enviado',
+      },
+    });
     resumen.bienesPendientes += 1;
 
     if (bien.conChat && adminId) {

@@ -93,10 +93,11 @@ Regla: todo endpoint consumido por frontend, WebAdmin o documentacion debe usar 
 - `GET /api/products?estado=...`
 - `GET /api/products/pending-review` (fallback)
 - `PUT /api/products/:id/status`
-- `PUT /api/products/:id/approve`
+- `PUT /api/products/:id/approve` (body incluye `categoriaSubasta`: `comun` | `especial` | `plata` | `oro` | `platino`)
 - `PUT /api/products/:id/reject`
 - `GET /api/settings/payment-methods/pending-verification`
 - `PUT /api/settings/payment-methods/:id/verify`
+- `POST /api/settings/payment-methods/check` (body incluye `monto`, usado como tope de puja para cheques verificados)
 
 ## Notas de normalizacion
 

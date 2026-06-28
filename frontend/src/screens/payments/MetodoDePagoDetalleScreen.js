@@ -96,10 +96,23 @@ function MetodoDePagoDetalleScreen({ navigation, route }) {// Explica: define in
           <Text style={styles.campoLabel}>Numero de tarjeta</Text>
           <View style={styles.campoInput}>
             <Text style={styles.campoValor}>
-              {metodo.numeroTarjeta ? metodo.numeroTarjeta : '•••• •••• •••• ••••'}
+              {metodo.tipo === 'cheque'
+                ? metodo.numeroCheque || '••••••••'
+                : metodo.numeroTarjeta ? metodo.numeroTarjeta : '•••• •••• •••• ••••'}
             </Text>
           </View>
         </View>
+
+        {metodo.tipo === 'cheque' && metodo.monto ? (
+          <View style={styles.campoWrapper}>
+            <Text style={styles.campoLabel}>Tope de puja</Text>
+            <View style={styles.campoInput}>
+              <Text style={styles.campoValor}>
+                ARS {Number(metodo.monto || 0).toLocaleString('es-AR')}
+              </Text>
+            </View>
+          </View>
+        ) : null}
 
         {/* Fila: Fecha de caducidad + Cod. Seguridad */}
         <View style={styles.filaDoble}>

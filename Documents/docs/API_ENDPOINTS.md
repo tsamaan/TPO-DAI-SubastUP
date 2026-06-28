@@ -238,10 +238,10 @@ Todas requieren **Bearer token**.
 
 ### PUT /api/products/:id/approve
 - **Auth:** Bearer + rol `revisor`/`admin` (además debe ser empleado)
-- **Descripción:** Aprueba el producto y genera la propuesta al usuario.
-- **Request:** path `:id`; body `precioBase`, `comision`, `fechaSubasta`, `horaSubasta`, `lugarSubasta`, `catalogoId`, `direccionEnvio?`.
+- **Descripción:** Aprueba el producto y genera la propuesta al usuario. La `categoriaSubasta` elegida por WebAdmin queda guardada en la subasta creada; si se reenvía la propuesta, se actualiza la categoría de esa subasta.
+- **Request:** path `:id`; body `precioBase`, `comision?`, `moneda?`, `categoriaSubasta?` (`comun` | `especial` | `plata` | `oro` | `platino`, default `comun`), `fechaSubasta`, `horaSubasta`, `lugarSubasta`, `direccionEnvio?`.
 - **Respuesta:** `{ ok, message }`.
-- **Errores:** `403` rol no autorizado o no es empleado; `400` faltan datos; `404` no encontrado.
+- **Errores:** `403` rol no autorizado o no es empleado; `400` faltan datos o categoría inválida; `404` no encontrado.
 
 ### PUT /api/products/:id/reject
 - **Auth:** Bearer + rol `revisor`/`admin`
@@ -277,7 +277,7 @@ Todas requieren **Bearer token**.
 - **Descripción:** Registra una nueva puja (con bloqueo de fila `SELECT ... FOR UPDATE` y validaciones de negocio).
 - **Request:** body `auctionId` (itemId), `amount` (importe).
 - **Respuesta:** `201 { ok, message, importeNuevo, tiempoRestante, ultimaPujaAt }`.
-- **Errores:** `400` importe inválido, subasta finalizada/no activa, timer expirado, fuera de límites, o ya tenés la puja más alta; `403` el dueño no puede pujar (`DUENIO_NO_PUEDE_PUJAR`), categoría insuficiente (`CATEGORIA_INSUFICIENTE`) o sin medio de pago verificado (`METODO_PAGO_REQUERIDO`); `404` ítem no encontrado; `409` ya participás en otra subasta activa. Los errores de negocio incluyen `codigo` y a veces `minimo`/`maximo`.
+- **Errores:** `400` importe inválido, subasta finalizada/no activa, timer expirado, fuera de límites, o ya tenés la puja más alta; `403` el dueño no puede pujar (`DUENIO_NO_PUEDE_PUJAR`), categoría insuficiente (`CATEGORIA_INSUFICIENTE`), sin medio de pago verificado (`METODO_PAGO_REQUERIDO`) o puja mayor al monto de cheque verificado (`CHEQUE_MONTO_INSUFICIENTE`); `404` ítem no encontrado; `409` ya participás en otra subasta activa. Los errores de negocio incluyen `codigo` y a veces `minimo`/`maximo`/`maximoCheque`.
 
 ---
 
@@ -336,7 +336,7 @@ Todas requieren **Bearer token**.
 
 ### GET /api/settings/payment-methods/
 - **Descripción:** Métodos de pago activos del usuario.
-- **Respuesta:** `{ ok, metodos: [...] }`. Base `{ id, tipo, verificado, fechaCreacion }`; según tipo agrega campos de tarjeta / banco / cheque.
+- **Respuesta:** `{ ok, metodos: [...] }`. Base `{ id, tipo, verificado, fechaCreacion }`; según tipo agrega campos de tarjeta / banco / cheque. Para cheque incluye `monto`, que funciona como tope máximo de puja si el usuario solo tiene cheques verificados.
 
 ### POST /api/settings/payment-methods/
 - **Descripción:** Agrega un método genérico; despacha por `tipo`.
@@ -351,7 +351,7 @@ Todas requieren **Bearer token**.
 - **Request:** body `cbu`, `alias?`, `titular`.
 
 ### POST /api/settings/payment-methods/check
-- **Request:** body `nombreBanco`, `fechaPago`, `numeroSucursal?`, `numeroCheque`, `imagen?` (base64).
+- **Request:** body `nombreBanco`, `fechaPago`, `numeroSucursal?`, `numeroCheque`, `monto` (> 0), `imagen?` (base64).
 
 ### DELETE /api/settings/payment-methods/:id
 - **Descripción:** Soft delete (marca el método inactivo). `404` si no existe.

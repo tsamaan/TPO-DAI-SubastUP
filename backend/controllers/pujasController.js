@@ -107,6 +107,59 @@ exports.getEstadoPuja = async (req, res) => {
     // Si el timer expiró y hay pujas → cerrar el ítem automáticamente
     if (tiempoRestante === 0 && item.pujos.length > 0) {
       const cierre = await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT identificador FROM itemscatalogo WHERE identificador = ${itemId} FOR UPDATE`;
+
+        const itemCierre = await tx.itemsCatalogo.findFirst({
+          where: { identificador: itemId },
+          include: {
+            productos: {
+              select: {
+                identificador: true,
+                revisor: true,
+                detalle: true,
+              },
+            },
+            detalle: true,
+            pujos: {
+              orderBy: { importe: 'desc' },
+              take: 1,
+              include: {
+                asistentes: {
+                  include: {
+                    clientes: {
+                      include: {
+                        personas: { select: { nombre: true } },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        });
+
+        if (!itemCierre || itemCierre.pujos.length === 0) {
+          const e = new Error('Ítem sin pujas para cerrar.');
+          e.status = 400;
+          throw e;
+        }
+
+        const ganadorId = itemCierre.pujos[0].asistentes.cliente;
+        const productoId = itemCierre.productos.identificador;
+        let conversacion = await tx.conversaciones.findFirst({
+          where: { producto: productoId },
+        });
+
+        if (itemCierre.detalle?.cerrado) {
+          return {
+            yaCerrado: true,
+            ganadorId,
+            conversacionId: conversacion?.identificador || null,
+            pujaActual: itemCierre.pujos[0].importe,
+            ganador: itemCierre.pujos[0].asistentes?.clientes?.personas?.nombre || null,
+          };
+        }
+
         // Marcar ítem como cerrado
         await tx.itemsCatalogo.update({
           where: { identificador: itemId },
@@ -116,14 +169,8 @@ exports.getEstadoPuja = async (req, res) => {
 
         // Marcar la puja ganadora
         await tx.pujos.update({
-          where: { identificador: item.pujos[0].identificador },
+          where: { identificador: itemCierre.pujos[0].identificador },
           data:  { ganador: 'si' },
-        });
-
-        const ganadorId = item.pujos[0].asistentes.cliente;
-        const productoId = item.productos.identificador;
-        let conversacion = await tx.conversaciones.findFirst({
-          where: { producto: productoId },
         });
 
         // La tabla base admite una conversación por producto. Para una subasta
@@ -135,7 +182,7 @@ exports.getEstadoPuja = async (req, res) => {
             data: {
               producto: productoId,
               duenio:   ganadorId,
-              empleado: item.productos.revisor,
+              empleado: itemCierre.productos.revisor,
               estado:   'activo',
             },
           });
@@ -144,40 +191,65 @@ exports.getEstadoPuja = async (req, res) => {
             where: { identificador: conversacion.identificador },
             data:  {
               duenio:   ganadorId,
-              empleado: item.productos.revisor,
+              empleado: itemCierre.productos.revisor,
               estado:   'activo',
             },
           });
         }
 
-        await tx.mensajes.create({
-          data: {
+        const mensajeExistente = await tx.mensajes.findFirst({
+          where: {
             conversacion: conversacion.identificador,
-            emisor:       item.productos.revisor,
-            texto:        MENSAJE_INICIAL_GANADOR,
-            leido:        false,
+            emisor: itemCierre.productos.revisor,
+            texto: MENSAJE_INICIAL_GANADOR,
           },
         });
+        if (!mensajeExistente) {
+          await tx.mensajes.create({
+            data: {
+              conversacion: conversacion.identificador,
+              emisor:       itemCierre.productos.revisor,
+              texto:        MENSAJE_INICIAL_GANADOR,
+              leido:        false,
+            },
+          });
+        }
 
-        await tx.notificaciones.create({
-          data: {
+        const mensajeNotificacion = `Ganaste ${itemCierre.productos.detalle?.nombre || 'el artículo'}. Abrí Mensajes para continuar.`;
+        const notificacionExistente = await tx.notificaciones.findFirst({
+          where: {
             persona: ganadorId,
-            titulo:  '¡Ganaste la subasta!',
-            mensaje: `Ganaste ${item.productos.detalle?.nombre || 'el artículo'}. Abrí Mensajes para continuar.`,
-            tipo:    'subasta_ganada',
+            tipo: 'subasta_ganada',
+            mensaje: mensajeNotificacion,
           },
         });
+        if (!notificacionExistente) {
+          await tx.notificaciones.create({
+            data: {
+              persona: ganadorId,
+              titulo:  '¡Ganaste la subasta!',
+              mensaje: mensajeNotificacion,
+              tipo:    'subasta_ganada',
+            },
+          });
+        }
 
-        return { ganadorId, conversacionId: conversacion.identificador };
+        return {
+          yaCerrado: false,
+          ganadorId,
+          conversacionId: conversacion.identificador,
+          pujaActual: itemCierre.pujos[0].importe,
+          ganador: itemCierre.pujos[0].asistentes?.clientes?.personas?.nombre || null,
+        };
       });
 
       return res.json({
         ok:         true,
         cerrado:    true,
-        message:    'Subasta finalizada.',
-        pujaActual: item.pujos[0].importe,
+        message:    cierre.yaCerrado ? 'Esta subasta ya finalizó.' : 'Subasta finalizada.',
+        pujaActual: cierre.pujaActual,
         moneda:     item.detalle?.moneda || 'ARS',
-        ganador:    item.pujos[0].asistentes?.clientes?.personas?.nombre || null,
+        ganador:    cierre.ganador,
         ganadorId:  cierre.ganadorId,
         conversacionId: cierre.conversacionId,
       });
@@ -300,15 +372,28 @@ exports.pujar = async (req, res) => {
       }
 
       // Debe tener al menos un medio de pago verificado por la empresa
-      const tieneMetodoVerificado = await tx.metodosPago.findFirst({
+      const metodosVerificados = await tx.metodosPago.findMany({
         where: { persona: personaId, activo: true, verificado: true },
+        include: { cheques: true },
       });
 
-      if (!tieneMetodoVerificado) {
+      if (metodosVerificados.length === 0) {
         const e = new Error('Necesitás al menos un medio de pago verificado por la empresa para poder pujar.');
         e.status = 403;
         e.codigo = 'METODO_PAGO_REQUERIDO';
         throw e;
+      }
+
+      const tieneMetodoSinTopeDeCheque = metodosVerificados.some((metodo) => metodo.tipo !== 'cheque');
+      if (!tieneMetodoSinTopeDeCheque) {
+        const maximoCheque = Math.max(...metodosVerificados.map((metodo) => Number(metodo.cheques?.monto || 0)));
+        if (importeNum > maximoCheque) {
+          const e = new Error(`Tu puja supera el monto máximo habilitado por tu cheque verificado (${maximoCheque.toFixed(2)} ${item.detalle?.moneda || 'ARS'}).`);
+          e.status = 403;
+          e.codigo = 'CHEQUE_MONTO_INSUFICIENTE';
+          e.extra = { maximoCheque: maximoCheque.toFixed(2) };
+          throw e;
+        }
       }
 
       // Timer expirado

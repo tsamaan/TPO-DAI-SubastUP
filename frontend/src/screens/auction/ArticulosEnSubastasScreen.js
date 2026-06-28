@@ -55,7 +55,8 @@ function ArticulosEnSubastasScreen({ navigation }) {// Estado: crea el estado va
       setLoading(true); // Estado: actualiza un valor usado por la interfaz.
       setError(null); // Explica: define data para usarlo en este archivo.
       const data = await api.get(ENDPOINTS.MY_AUCTIONS); // Estado: actualiza un valor usado por la interfaz.
-      setArticulos(Array.isArray(data?.productos) ? data.productos : []);
+      const lista = data?.productos || data?.articulos || [];
+      setArticulos(Array.isArray(lista) ? lista : []);
     } catch (err) {// Estado: actualiza un valor usado por la interfaz.
       setError('No se pudieron cargar tus artículos. Intentá de nuevo.'); // Estado: actualiza un valor usado por la interfaz.
       setArticulos([]);

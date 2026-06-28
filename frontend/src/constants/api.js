@@ -13,8 +13,12 @@ Para que sirve: deja claro el flujo para que la pantalla sea facil de estudiar y
 //   Android emulador:       http://10.0.2.2:3001
 //   Celular en otra red:    exponé el backend con ngrok y usá esa URL https
 // El default apunta al backend publico en Render, que usa la base Supabase.
-export // Explica: define BASE_URL para usarlo en este archivo.
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://tpo-dai-subastup.onrender.com';export // Explica: define ENDPOINTS para usarlo en este archivo.
+// BASE_URL es usado por services/api.js para construir todas las requests HTTP.
+export
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://tpo-dai-subastup.onrender.com';
+
+// Mapa único de endpoints del backend. Las pantallas importan estas claves para no hardcodear rutas.
+export
 const ENDPOINTS = { // ── Auth ────────────────────────────────────────────────
   LOGIN: '/api/auth/login', REGISTER: '/api/auth/register', FORGOT_PASSWORD: '/api/auth/forgot-password', VERIFY_CODE: '/api/auth/verify-code', RESET_PASSWORD: '/api/auth/reset-password', VALIDATE_USER: '/api/auth/validate-user',
   LOGOUT: '/api/auth/logout',

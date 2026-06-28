@@ -391,6 +391,7 @@ model Cheques {
   fechaPago      DateTime    @db.Date
   numeroSucursal String?     @db.VarChar(20)
   numeroCheque   String      @db.VarChar(30)
+  monto          Decimal     @default(0) @db.Decimal(18, 2)
   imagen         Bytes?
   metodosPago    MetodosPago @relation(fields: [identificador], references: [identificador])
 

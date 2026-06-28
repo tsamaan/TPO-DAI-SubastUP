@@ -11,6 +11,7 @@ const MENSAJE_PROPUESTA_ACEPTADA =
   'Confirmaste la propuesta. Tu artículo queda aceptado para avanzar al circuito de subasta.';
 const MENSAJE_PROPUESTA_RECHAZADA =
   'Rechazaste la propuesta. El circuito queda cerrado y coordinaremos los próximos pasos si corresponde.';
+const CATEGORIAS_SUBASTA = ['comun', 'especial', 'plata', 'oro', 'platino'];
 
 function horaTextoADate(hora = '15:00') {
   const [hh = '15', mm = '00'] = String(hora).split(':');
@@ -361,7 +362,7 @@ exports.responderPropuesta = async (req, res) => {
   try {
     const { personaId } = req.user;
     const id = parseInt(req.params.id);
-    const { action, reason } = req.body;
+    const { action, reason, categoriaSubasta, categoria, categoriaBien } = req.body;
 
     if (action !== 'ACCEPT' && action !== 'REJECT')
       return res.status(400).json({ ok: false, message: 'La acción debe ser ACCEPT o REJECT.' });
@@ -370,7 +371,14 @@ exports.responderPropuesta = async (req, res) => {
 
     const producto = await prisma.productos.findFirst({
       where:   { identificador: id, duenio: personaId, detalle: { estado: 'esperando_usuario' } },
-      include: { itemsCatalogo: true, detalle: true },
+      include: {
+        itemsCatalogo: {
+          include: {
+            catalogos: true,
+          },
+        },
+        detalle: true,
+      },
     });
 
     if (!producto || producto.itemsCatalogo.length === 0)
@@ -378,6 +386,7 @@ exports.responderPropuesta = async (req, res) => {
 
     const itemId     = producto.itemsCatalogo[0].identificador;
     const nuevoEstado = acepta ? 'confirmado' : 'devuelto';
+    const categoriaConfirmada = String(categoriaSubasta || categoria || categoriaBien || '').trim().toLowerCase();
 
     await prisma.$transaction(async (tx) => {
       await tx.productosDetalle.update({
@@ -390,7 +399,28 @@ exports.responderPropuesta = async (req, res) => {
         data:  { aceptadoPorDuenio: acepta },
       });
 
-      const conversacion = await tx.conversaciones.findFirst({ where: { producto: id } });
+      if (acepta && categoriaConfirmada && CATEGORIAS_SUBASTA.includes(categoriaConfirmada)) {
+        const subastaId = producto.itemsCatalogo[0].catalogos?.subasta;
+        if (subastaId) {
+          await tx.subastas.update({
+            where: { identificador: subastaId },
+            data:  { categoria: categoriaConfirmada },
+          });
+        }
+      }
+
+      let conversacion = await tx.conversaciones.findFirst({ where: { producto: id } });
+      if (!conversacion) {
+        conversacion = await tx.conversaciones.create({
+          data: {
+            producto: id,
+            duenio:   personaId,
+            empleado: producto.revisor,
+            estado:   'activo',
+          },
+        });
+      }
+
       if (conversacion) {
         await tx.mensajes.create({
           data: {
@@ -466,6 +496,12 @@ exports.todosLosProductos = async (req, res) => {
             precioBase:    true,
             comision:      true,
             detalle:       true,
+            catalogos: {
+              select: {
+                subasta: true,
+                subastas: { select: { categoria: true } },
+              },
+            },
           },
         },
       },
@@ -487,6 +523,7 @@ exports.todosLosProductos = async (req, res) => {
           itemId:            item.identificador,
           precioBase:        item.precioBase,
           comision:          item.comision,
+          categoriaSubasta:  item.catalogos?.subastas?.categoria || null,
           moneda:            item.detalle?.moneda || 'ARS',
           fechaSubasta:      item.detalle?.fechaSubasta || null,
           horaSubasta:       item.detalle?.horaSubasta  || null,
@@ -540,7 +577,18 @@ exports.cambiarEstado = async (req, res) => {
         data:  { estado },
       });
 
-      const conversacion = await tx.conversaciones.findFirst({ where: { producto: id } });
+      let conversacion = await tx.conversaciones.findFirst({ where: { producto: id } });
+      if (!conversacion) {
+        conversacion = await tx.conversaciones.create({
+          data: {
+            producto: id,
+            duenio:   productoActual.duenio,
+            empleado: personaId,
+            estado:   'activo',
+          },
+        });
+      }
+
       if (conversacion) {
         await tx.mensajes.create({
           data: {
@@ -574,7 +622,7 @@ exports.cambiarEstado = async (req, res) => {
 // PUT /api/products/:id/approve  (revisor/admin)
 // Aprueba el producto, crea la subasta automáticamente y envía
 // propuesta al usuario (estado → esperando_usuario).
-// Body: { precioBase, comision?, moneda?, fechaSubasta,
+// Body: { precioBase, comision?, moneda?, categoriaSubasta?, fechaSubasta,
 //         horaSubasta, lugarSubasta, direccionEnvio? }
 // ─────────────────────────────────────────────────────────────
 exports.aprobarProducto = async (req, res) => {
@@ -588,6 +636,7 @@ exports.aprobarProducto = async (req, res) => {
       precioBase,
       comision    = 10,
       moneda      = 'ARS',
+      categoriaSubasta,
       fechaSubasta,
       horaSubasta,
       lugarSubasta,
@@ -596,6 +645,10 @@ exports.aprobarProducto = async (req, res) => {
 
     if (!precioBase || !fechaSubasta || !horaSubasta || !lugarSubasta)
       return res.status(400).json({ ok: false, message: 'Faltan datos: precioBase, fechaSubasta, horaSubasta, lugarSubasta.' });
+
+    const categoriaNormalizada = String(categoriaSubasta || req.body.categoria || req.body.categoriaBien || 'comun').trim().toLowerCase();
+    if (!CATEGORIAS_SUBASTA.includes(categoriaNormalizada))
+      return res.status(400).json({ ok: false, message: `Categoría inválida. Permitidas: ${CATEGORIAS_SUBASTA.join(', ')}.` });
 
     const empleado = await prisma.empleados.findFirst({ where: { identificador: personaId } });
     if (!empleado)
@@ -634,6 +687,15 @@ exports.aprobarProducto = async (req, res) => {
           create: { item: itemExistente.identificador, moneda, fechaSubasta: new Date(fechaSubasta), horaSubasta, lugarSubasta },
           update: { moneda, fechaSubasta: new Date(fechaSubasta), horaSubasta, lugarSubasta, cerrado: false, ultimaPuja: null, aceptadoPorDuenio: null },
         });
+        const catalogoExistente = await tx.catalogos.findUnique({
+          where: { identificador: itemExistente.catalogo },
+        });
+        if (catalogoExistente?.subasta) {
+          await tx.subastas.update({
+            where: { identificador: catalogoExistente.subasta },
+            data:  { categoria: categoriaNormalizada },
+          });
+        }
         itemId = itemExistente.identificador;
       } else {
         // Primera propuesta: crear subasta → catálogo → ítem → detalle
@@ -647,7 +709,7 @@ exports.aprobarProducto = async (req, res) => {
             capacidadAsistentes: 100,
             tieneDeposito:       'si',
             seguridadPropia:     'si',
-            categoria:           'comun',
+            categoria:           categoriaNormalizada,
           },
         });
 
@@ -682,7 +744,18 @@ exports.aprobarProducto = async (req, res) => {
         itemId = nuevoItem.identificador;
       }
 
-      const conversacion = await tx.conversaciones.findFirst({ where: { producto: id } });
+      let conversacion = await tx.conversaciones.findFirst({ where: { producto: id } });
+      if (!conversacion) {
+        conversacion = await tx.conversaciones.create({
+          data: {
+            producto: id,
+            duenio:   productoActual.duenio,
+            empleado: personaId,
+            estado:   'activo',
+          },
+        });
+      }
+
       if (conversacion) {
         await tx.mensajes.create({
           data: {

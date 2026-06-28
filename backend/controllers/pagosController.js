@@ -62,6 +62,7 @@ exports.listarMetodos = async (req, res) => {
           fechaPago:      m.cheques.fechaPago,
           numeroSucursal: m.cheques.numeroSucursal,
           numeroCheque:   m.cheques.numeroCheque,
+          monto:          m.cheques.monto,
           imagen:         bufferImagenABase64(m.cheques.imagen),
         };
       }
@@ -171,15 +172,19 @@ exports.agregarBanco = async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────
 // POST /api/pagos/cheque
-// Body: { nombreBanco, fechaPago, numeroSucursal?, numeroCheque, imagen? }
+// Body: { nombreBanco, fechaPago, numeroSucursal?, numeroCheque, monto, imagen? }
 // ─────────────────────────────────────────────────────────────
 exports.agregarCheque = async (req, res) => {
   try {
     const { personaId } = req.user;
-    const { nombreBanco, fechaPago, numeroSucursal, numeroCheque, imagen } = req.body;
+    const { nombreBanco, fechaPago, numeroSucursal, numeroCheque, monto, imagen } = req.body;
 
     if (!nombreBanco || !fechaPago || !numeroCheque)
       return res.status(400).json({ ok: false, message: 'Nombre del banco, fecha de pago y número de cheque son obligatorios.' });
+
+    const montoCheque = Number(monto);
+    if (!Number.isFinite(montoCheque) || montoCheque <= 0)
+      return res.status(400).json({ ok: false, message: 'El monto del cheque debe ser un número mayor a cero.' });
 
     const imagenBuffer = imagen ? imagenBase64ABuffer(imagen)?.buffer : null;
 
@@ -195,6 +200,7 @@ exports.agregarCheque = async (req, res) => {
           fechaPago:      new Date(fechaPago),
           numeroSucursal: numeroSucursal || null,
           numeroCheque,
+          monto:          montoCheque,
           imagen:         imagenBuffer,
         },
       });
@@ -284,6 +290,8 @@ exports.metodosPendientesVerificacion = async (req, res) => {
       id:           m.identificador,
       tipo:         m.tipo,
       titular:      m.tarjetas?.titular || m.cuentasBancarias?.titular || null,
+      numeroCheque: m.cheques?.numeroCheque || null,
+      monto:        m.cheques?.monto || null,
       nombreDuenio: m.personas?.nombre,
       documento:    m.personas?.documento,
       fechaCreacion: m.fechaCreacion,

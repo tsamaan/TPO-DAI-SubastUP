@@ -18,6 +18,14 @@ const C = {
   blanco:     '#FFFFFF',
 }
 
+const CATEGORIAS_BIEN = [
+  { value: 'comun', label: 'Común' },
+  { value: 'especial', label: 'Especial' },
+  { value: 'plata', label: 'Plata' },
+  { value: 'oro', label: 'Oro' },
+  { value: 'platino', label: 'Platino' },
+]
+
 // ── Estilos globales ───────────────────────────────────────────
 const globalStyles = `
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -448,8 +456,10 @@ function Bienes({ token, toast }) {
     setLoadingAction(null)
   }
 
-  const accionPropuesta = async (productoId) => {
+  const accionPropuesta = async (bien) => {
+    const productoId = bien.productoId
     const f = getForm(productoId)
+    const categoriaElegida = f.categoriaSubasta || bien.propuesta?.categoriaSubasta || 'comun'
     if (!f.precioBase || !f.fechaSubasta || !f.horaSubasta || !f.lugarSubasta) {
       toast('Completá precio base, fecha, hora y lugar', 'error'); return
     }
@@ -458,6 +468,7 @@ function Bienes({ token, toast }) {
       precioBase:   parseFloat(f.precioBase),
       comision:     parseFloat(f.comision || 10),
       moneda:       f.moneda || 'ARS',
+      categoriaSubasta: categoriaElegida,
       fechaSubasta: f.fechaSubasta,
       horaSubasta:  f.horaSubasta,
       lugarSubasta: f.lugarSubasta,
@@ -562,6 +573,8 @@ function Bienes({ token, toast }) {
                         </span>
                         <span style={{ color: C.textoGris }}>Comisión</span>
                         <span style={{ color: C.texto }}>{Number(b.propuesta.comision).toFixed(1)}%</span>
+                        <span style={{ color: C.textoGris }}>Categoría</span>
+                        <span style={{ color: C.texto }}>{CATEGORIAS_BIEN.find(c => c.value === b.propuesta.categoriaSubasta)?.label || b.propuesta.categoriaSubasta || 'Común'}</span>
                         {b.propuesta.fechaSubasta && <>
                           <span style={{ color: C.textoGris }}>Fecha subasta</span>
                           <span style={{ color: C.texto }}>
@@ -642,6 +655,16 @@ function Bienes({ token, toast }) {
                               onChange={e => setForm(b.productoId, 'comision', e.target.value)}
                               style={inputSt}
                             />
+                            <div>
+                              <label style={{ fontSize: 11, color: C.textoGris, display: 'block', marginBottom: 3 }}>Categoría del bien *</label>
+                              <select
+                                value={f.categoriaSubasta || b.propuesta?.categoriaSubasta || 'comun'}
+                                onChange={e => setForm(b.productoId, 'categoriaSubasta', e.target.value)}
+                                style={inputSt}
+                              >
+                                {CATEGORIAS_BIEN.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                              </select>
+                            </div>
                             <div style={{ display: 'flex', gap: 7 }}>
                               <div style={{ flex: 1 }}>
                                 <label style={{ fontSize: 11, color: C.textoGris, display: 'block', marginBottom: 3 }}>Fecha subasta *</label>
@@ -671,7 +694,7 @@ function Bienes({ token, toast }) {
                             <Btn
                               small
                               color={C.verde}
-                              onClick={() => accionPropuesta(b.productoId)}
+                              onClick={() => accionPropuesta(b)}
                               disabled={loadingAction === b.productoId + '_propuesta'}
                             >
                               {loadingAction === b.productoId + '_propuesta' ? 'Enviando...' : b.propuesta ? '↺ Reenviar propuesta' : '✓ Enviar propuesta'}
@@ -707,6 +730,16 @@ function Bienes({ token, toast }) {
                               </select>
                             </div>
                             <input type="number" placeholder="Comisión %" value={f.comision || ''} onChange={e => setForm(b.productoId, 'comision', e.target.value)} style={inputSt} />
+                            <div>
+                              <label style={{ fontSize: 11, color: C.textoGris, display: 'block', marginBottom: 3 }}>Categoría del bien</label>
+                              <select
+                                value={f.categoriaSubasta || b.propuesta?.categoriaSubasta || 'comun'}
+                                onChange={e => setForm(b.productoId, 'categoriaSubasta', e.target.value)}
+                                style={inputSt}
+                              >
+                                {CATEGORIAS_BIEN.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                              </select>
+                            </div>
                             <div style={{ display: 'flex', gap: 7 }}>
                               <div style={{ flex: 1 }}>
                                 <label style={{ fontSize: 11, color: C.textoGris, display: 'block', marginBottom: 3 }}>Fecha subasta</label>
@@ -718,7 +751,7 @@ function Bienes({ token, toast }) {
                               </div>
                             </div>
                             <input placeholder="Lugar" value={f.lugarSubasta || ''} onChange={e => setForm(b.productoId, 'lugarSubasta', e.target.value)} style={inputSt} />
-                            <Btn small color={C.verde} onClick={() => accionPropuesta(b.productoId)} disabled={loadingAction === b.productoId + '_propuesta'}>
+                            <Btn small color={C.verde} onClick={() => accionPropuesta(b)} disabled={loadingAction === b.productoId + '_propuesta'}>
                               {loadingAction === b.productoId + '_propuesta' ? 'Enviando...' : '↺ Reenviar propuesta'}
                             </Btn>
                           </div>
@@ -801,6 +834,12 @@ function MetodosPago({ token, toast }) {
                 <span style={{ fontWeight: 700, fontSize: 15 }}>{m.titular || '—'}</span>
               </div>
               <p style={{ color: C.textoGris, fontSize: 13 }}>Usuario: {m.nombreDuenio} · DNI: {m.documento}</p>
+              {m.tipo === 'cheque' && m.monto ? (
+                <p style={{ color: C.textoGris, fontSize: 13, marginTop: 2 }}>
+                  Tope de puja: ARS {Number(m.monto).toLocaleString('es-AR')}
+                  {m.numeroCheque ? ` · Cheque ${m.numeroCheque}` : ''}
+                </p>
+              ) : null}
               <p style={{ color: C.textoGris, fontSize: 12, marginTop: 2 }}>
                 Registrado: {new Date(m.fechaCreacion).toLocaleDateString('es-AR')}
               </p>

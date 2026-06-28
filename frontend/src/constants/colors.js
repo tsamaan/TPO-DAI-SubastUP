@@ -4,7 +4,9 @@ Responsabilidad: organiza la logica visual y de estado definida en constants/col
 Endpoints: no llama endpoints directamente.
 Como se conecta: usa el cliente api con BASE_URL y el interceptor de token cuando necesita backend.
 Para que sirve: deja claro el flujo para que la pantalla sea facil de estudiar y mantener.
-*/export // Explica: define COLORS para usarlo en este archivo.
+*/
+// Paleta principal clara usada por pantallas, componentes y estados visuales.
+export
 const COLORS = { primary: '#8B0000', primaryLight: '#E53935', secondary: '#212121', white: '#FFFFFF', background: '#7B7B7B', surface: '#FFFFFF', border: '#7B7B7B',
   placeholder: '#7B7B7B',
   error: '#C62828',
@@ -12,19 +14,23 @@ const COLORS = { primary: '#8B0000', primaryLight: '#E53935', secondary: '#21212
   timerWarning: '#FF6F00'
 };
 
-export // Explica: define SPACING para usarlo en este archivo.
+// Escala de espaciado reutilizable para mantener paddings/margins consistentes.
+export
 const SPACING = { xs: 4, sm: 8, md: 16, lg: 24, xl: 32, xxl: 48
 };
 
-export // Explica: define RADIUS para usarlo en este archivo.
+// Radios estándar para cards, botones y elementos circulares.
+export
 const RADIUS = { sm: 4, md: 8, lg: 12, full: 999
 };
 
-export // Explica: define FONTS para usarlo en este archivo.
+// Tamaños tipográficos compartidos por las pantallas.
+export
 const FONTS = { sizes: { xs: 11, sm: 13, md: 15, lg: 17, xl: 20, xxl: 24 }
 };
 
-export // Explica: define DARK_COLORS para usarlo en este archivo.
+// Variante oscura de la paleta, consumida por ThemeContext/configuración.
+export
 const DARK_COLORS = { primary: '#8B0000',
   primaryLight: '#E53935',
   secondary: '#F5F5F5',

@@ -19,20 +19,25 @@ import { useFocusEffect } from '@react-navigation/native'; // Explica: importa d
 import useAuthStore from '../../store/authStore'; // Explica: importa dependencias desde '../../context/ThemeContext'.
 import { useAppTheme } from '../../context/ThemeContext'; // Explica: importa dependencias desde '../../services/api'.
 import api from '../../services/api'; // Explica: importa dependencias desde '../../constants/api'.
-import { ENDPOINTS } from '../../constants/api'; // Explica: define LOGO usando el resultado de require.
+import { ENDPOINTS } from '../../constants/api';
 
-const LOGO = require('../../assets/images/texto_appbar.jpeg'); // Explica: define IMG_PLACEHOLDER1 usando el resultado de require.
-const IMG_PLACEHOLDER1 = require('../../assets/images/imagen_menu1.jpeg'); // Explica: define IMG_PLACEHOLDER2 usando el resultado de require.
-const IMG_PLACEHOLDER2 = require('../../assets/images/imagen_menu2.jpeg'); // Explica: define objeto desestructurado usando el resultado de Dimensions.get.
-const { width: SCREEN_WIDTH } = Dimensions.get('window'); // Explica: define DRAWER_WIDTH para usarlo en este archivo.
-const DRAWER_WIDTH = SCREEN_WIDTH * 0.78; // Explica: define MENU_BUTTONS para usarlo en este archivo.
+// Asset del logo textual que se muestra centrado en el header autenticado.
+const LOGO = require('../../assets/images/texto_appbar.jpeg');
+// Imágenes locales usadas como piezas visuales de la home cuando no vienen datos remotos.
+const IMG_PLACEHOLDER1 = require('../../assets/images/imagen_menu1.jpeg');
+const IMG_PLACEHOLDER2 = require('../../assets/images/imagen_menu2.jpeg');
+// Ancho del dispositivo; se usa para calcular el drawer y animaciones horizontales.
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+// Ancho del menú lateral. Depende del viewport para cubrir gran parte de pantalla sin ocuparla entera.
+const DRAWER_WIDTH = SCREEN_WIDTH * 0.78;
 
+// Accesos rápidos visibles en la home. Cada item conecta texto/icono con una ruta de React Navigation.
 const MENU_BUTTONS = [
 { label: 'Metodos de Pago', icon: 'card-outline', nav: 'MetodosDePago' },
 { label: 'Informacion', icon: 'information-circle-outline', nav: 'Informacion' },
-{ label: 'Calendario', icon: 'calendar-outline', nav: 'Calendar' }]; // Explica: define DRAWER_GROUPS para usarlo en este archivo.
+{ label: 'Calendario', icon: 'calendar-outline', nav: 'Calendar' }];
 
-
+// Grupos del drawer lateral. Mantiene separadas cuenta/config, acciones de subasta y cierre de sesión.
 const DRAWER_GROUPS = [
 [
 { label: 'Cuenta', icon: 'person-circle-outline', nav: 'MiCuenta' },
@@ -49,19 +54,23 @@ const DRAWER_GROUPS = [
 
 
 
-// Notificaciones de ejemplo (vacío = muestra el placeholder)
+// Notificaciones de ejemplo legacy (vacío = muestra el placeholder si se vuelve a usar mock).
 // const NOTIFICATIONS = [];
-// Explica: define obtenerNombreUsuario para usarlo en este archivo.
-const obtenerNombreUsuario = (user) => user?.name || user?.nombre || user?.email || 'Usuario'; // Explica: define obtenerIniciales para usarlo en este archivo.
 
+// Normaliza el objeto de usuario guardado en authStore para obtener un nombre presentable.
+const obtenerNombreUsuario = (user) => user?.name || user?.nombre || user?.email || 'Usuario';
+
+// Calcula iniciales para avatares o placeholders a partir del nombre visible del usuario.
 const obtenerIniciales = (nombre = '') => {// Explica: define partes usando el resultado de filter.
   const partes = String(nombre).trim().split(/\s+/).filter(Boolean); // Explica: define letras para usarlo en este archivo.
   const letras = partes.length > 1 ?
   `${partes[0][0]}${partes[1][0]}` :
   String(nombre).slice(0, 2); // Render: devuelve el resultado que consume React o la funcion llamadora.
   return letras.toUpperCase() || 'US';
-}; // Explica: declara la funcion NotificationSwipeItem que concentra una parte del flujo.
+};
 
+// Item individual del panel de notificaciones. No llama al backend directamente:
+// delega el borrado a onDelete, que en la pantalla usa DELETE /api/notifications/:id.
 function NotificationSwipeItem({ item, theme, onDelete }) {// Explica: define translateX para usarlo en este archivo.
   const translateX = useRef(new Animated.Value(0)).current; // Explica: define panResponder para usarlo en este archivo.
 
@@ -111,29 +120,49 @@ function NotificationSwipeItem({ item, theme, onDelete }) {// Explica: define tr
 
 export default // Explica: declara la funcion HomeAuthenticatedScreen que concentra una parte del flujo.
 function HomeAuthenticatedScreen({ navigation }) {// Explica: define objeto desestructurado usando el resultado de useAppTheme.
+  // Tema global de la app. No llama al backend: viene del ThemeContext local.
   const { theme, isDark } = useAppTheme(); // Explica: define insets usando el resultado de useSafeAreaInsets.
+  // Insets seguros para no superponer header/drawer con notch o barra del sistema.
   const insets = useSafeAreaInsets(); // Estado: crea el estado valores desestructurados y su actualizador.
+  // Índice visual para tabs internos de la home, si se usan secciones alternables.
   const [activeTab, setActiveTab] = useState(0); // Explica: define logout usando el resultado de useAuthStore.
+  // Acción de logout del store; limpia sesión local y cambia el árbol de navegación.
   const logout = useAuthStore((state) => state.logout); // Explica: define user usando el resultado de useAuthStore.
+  // Usuario autenticado guardado después de /api/auth/login.
   const user = useAuthStore((state) => state.user); // Explica: define userName usando el resultado de obtenerNombreUsuario.
+  // Nombre mostrado en la UI a partir del shape flexible del usuario.
   const userName = obtenerNombreUsuario(user); // Explica: define userInitials usando el resultado de obtenerIniciales.
+  // Iniciales derivadas del nombre, útiles para avatar textual.
   const userInitials = obtenerIniciales(userName);
   // ── Hamburger menu state ─────────────────────
   // Estado: crea el estado valores desestructurados y su actualizador.
+  // Controla si el drawer lateral está montado/visible.
   const [menuOpen, setMenuOpen] = useState(false); // Explica: define translateX para usarlo en este archivo.
+  // Valor animado que desplaza el drawer desde fuera de pantalla hasta su posición visible.
   const translateX = useRef(new Animated.Value(-DRAWER_WIDTH)).current; // Explica: define overlayOpacity para usarlo en este archivo.
+  // Opacidad del overlay oscuro que aparece detrás del drawer.
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   // ── Notification panel state ─────────────────
   // Estado: crea el estado valores desestructurados y su actualizador.
+  // Controla si el panel desplegable de notificaciones está montado.
   const [notifOpen, setNotifOpen] = useState(false); // Estado: crea el estado valores desestructurados y su actualizador.
+  // Permite plegar/expandir la lista de notificaciones dentro del panel.
   const [notifsExpanded, setNotifsExpanded] = useState(true); // Estado: crea el estado valores desestructurados y su actualizador.
+  // Permite plegar/expandir el bloque de configuración rápida.
   const [configExpanded, setConfigExpanded] = useState(false); // Estado: crea el estado valores desestructurados y su actualizador.
+  // Toggle visual local del tema oscuro en este panel.
   const [darkTheme, setDarkTheme] = useState(true); // Explica: define notifAnim para usarlo en este archivo.
+  // Valor animado principal del panel de notificaciones.
   const notifAnim = useRef(new Animated.Value(0)).current; // Explica: define notifOverlay para usarlo en este archivo.
+  // Opacidad del overlay que cierra el panel de notificaciones al tocar afuera.
   const notifOverlay = useRef(new Animated.Value(0)).current;
   // ── Backend Notifications ────────────────────
   // Estado: crea el estado valores desestructurados y su actualizador.
+  // Lista cruda devuelta por GET /api/notifications.
   const [notifications, setNotifications] = useState([]); // Evento: memoiza el callback fetchNotifs.
+
+  // Carga notificaciones del backend. Usa el cliente api, que adjunta Authorization automáticamente.
+  // Backend: GET /api/notifications -> { ok, notificaciones }.
   const fetchNotifs = useCallback(async () => {// Control: intenta una operacion y maneja errores si falla.
     try {// Explica: define data para usarlo en este archivo.
       const data = await api.get(ENDPOINTS.NOTIFICATIONS); // Estado: actualiza un valor usado por la interfaz.
@@ -149,8 +178,11 @@ function HomeAuthenticatedScreen({ navigation }) {// Explica: define objeto dese
     }, [fetchNotifs])
   ); // Explica: define notificacionesSinLeer para usarlo en este archivo.
 
+  // Cantidad de notificaciones no leídas; alimenta el punto rojo/counter de la campanita.
   const notificacionesSinLeer = notifications.filter((notificacion) => !notificacion.leido).length; // Evento: memoiza el callback marcarNotificacionesComoLeidas.
 
+  // Marca localmente como leídas y confirma al backend.
+  // Backend: PUT/PATCH /api/notifications/read-all según ENDPOINTS.NOTIF_READ_ALL.
   const marcarNotificacionesComoLeidas = useCallback(async () => {// Explica: define haySinLeer usando el resultado de notifications.some.
     const haySinLeer = notifications.some((notificacion) => !notificacion.leido); // Control: evalua una condicion para decidir el siguiente paso.
     if (!haySinLeer) // Render: devuelve el resultado que consume React o la funcion llamadora.
@@ -163,6 +195,8 @@ function HomeAuthenticatedScreen({ navigation }) {// Explica: define objeto dese
     }
   }, [fetchNotifs, notifications]); // Evento: memoiza el callback eliminarNotificacion.
 
+  // Elimina una notificación con actualización optimista.
+  // Backend: DELETE /api/notifications/:id.
   const eliminarNotificacion = useCallback(async (id) => {// Estado: actualiza un valor usado por la interfaz.
     setNotifications((prev) => prev.filter((notificacion) => notificacion.identificador !== id)); // Control: intenta una operacion y maneja errores si falla.
     try {// API: llama DELETE /api/notifications/:id para eliminar una notificacion.
@@ -331,31 +365,6 @@ function HomeAuthenticatedScreen({ navigation }) {// Explica: define objeto dese
 
             )
             }
-              </View>
-          }
-
-            {/* Separador */}
-          <View style={[styles.notifDivider, { backgroundColor: theme.border }]} />
-
-            {/* ── Sección Configuracion ── */}
-          <TouchableOpacity style={styles.notifSectionHeader} onPress={() => setConfigExpanded((v) => !v)}
-            activeOpacity={0.7}>
-            
-            <Ionicons name="settings-outline" size={20} color={theme.secondary} style={{ marginRight: 8 }} />
-            <Text style={[styles.notifSectionTitle, { color: theme.secondary }]}>Configuracion</Text>
-            <Ionicons name={configExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={theme.secondary} />
-            
-            </TouchableOpacity>
-
-            {configExpanded && // UI: renderiza el componente View.
-          <View style={styles.configContent}>
-            <View style={styles.themeRow}>
-              <Ionicons name="moon-outline" size={20} color={theme.secondary} style={{ marginRight: 10 }} />
-              <Text style={[styles.themeLabel, { color: theme.secondary }]}>Tema</Text>
-              <Switch value={darkTheme} onValueChange={setDarkTheme} thumbColor={darkTheme ? '#FFFFFF' : '#FFFFFF'} trackColor={{ false: '#C0B0A8', true: '#8b0000' }}
-                style={{ marginLeft: 'auto' }} />
-              
-                </View>
               </View>
           }
           </Animated.View>

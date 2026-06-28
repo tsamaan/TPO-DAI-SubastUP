@@ -4,8 +4,12 @@ Responsabilidad: organiza la logica visual y de estado definida en utils/auction
 Endpoints: no llama endpoints directamente.
 Como se conecta: usa el cliente api con BASE_URL y el interceptor de token cuando necesita backend.
 Para que sirve: deja claro el flujo para que la pantalla sea facil de estudiar y mantener.
-*/ // Explica: define ESTADOS_PROXIMAMENTE para usarlo en este archivo.
-const ESTADOS_PROXIMAMENTE = ['programada', 'proximamente', 'pendiente', 'proxima', 'próximamente'];export // Explica: define normalizarEstadoSubasta para usarlo en este archivo.
+*/
+// Estados backend que la app debe mostrar como "próximamente".
+const ESTADOS_PROXIMAMENTE = ['programada', 'proximamente', 'pendiente', 'proxima', 'próximamente'];
+
+// Normaliza estados recibidos del backend a los tres estados visuales de la app.
+export
 const normalizarEstadoSubasta = (estado, cerrado = false) => {// Control: evalua una condicion para decidir el siguiente paso.
   if (cerrado) // Render: devuelve el resultado que consume React o la funcion llamadora.
     return 'finalizado'; // Explica: define valor usando el resultado de toLowerCase.
@@ -16,8 +20,14 @@ const normalizarEstadoSubasta = (estado, cerrado = false) => {// Control: evalua
     return 'proximamente'; // Control: evalua una condicion para decidir el siguiente paso.
   if (valor === 'cerrada' || valor === 'finalizada' || valor === 'finalizado') // Render: devuelve el resultado que consume React o la funcion llamadora.
     return 'finalizado'; // Render: devuelve el resultado que consume React o la funcion llamadora.
-  return valor || 'proximamente';};export // Explica: define esSubastaProximamente para usarlo en este archivo.
-const esSubastaProximamente = (estado) => normalizarEstadoSubasta(estado) === 'proximamente';export // Explica: define fechaSubastaLocal para usarlo en este archivo.
+  return valor || 'proximamente';};
+
+// Helper semántico para filtros/listados que solo necesitan saber si una subasta aún no está viva.
+export
+const esSubastaProximamente = (estado) => normalizarEstadoSubasta(estado) === 'proximamente';
+
+// Parsea fechas del backend evitando corrimientos de zona horaria para valores YYYY-MM-DD.
+export
 const fechaSubastaLocal = (fecha) => {// Control: evalua una condicion para decidir el siguiente paso.
   if (!fecha) // Render: devuelve el resultado que consume React o la funcion llamadora.
     return null; // Explica: define match usando el resultado de match.
@@ -25,7 +35,10 @@ const fechaSubastaLocal = (fecha) => {// Control: evalua una condicion para deci
   if (match) {// Render: devuelve el resultado que consume React o la funcion llamadora.
     return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));} // Explica: define parsed para usarlo en este archivo.
   const parsed = new Date(fecha); // Render: devuelve el resultado que consume React o la funcion llamadora.
-  return Number.isNaN(parsed.getTime()) ? null : parsed;};export // Explica: define formatearFechaHoraSubasta para usarlo en este archivo.
+  return Number.isNaN(parsed.getTime()) ? null : parsed;};
+
+// Formatea fecha/hora de subasta para cards y detalles usando locale argentino.
+export
 const formatearFechaHoraSubasta = (fecha, hora) => {// Explica: define fechaBase usando el resultado de fechaSubastaLocal.
   const fechaBase = fechaSubastaLocal(fecha); // Explica: define partes para usarlo en este archivo.
   const partes = []; // Control: evalua una condicion para decidir el siguiente paso.

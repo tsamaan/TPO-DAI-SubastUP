@@ -86,6 +86,7 @@ function AgregarMetodoPagoScreen({ navigation }) {// Explica: define insets usan
   const [fechaPago, setFechaPago] = useState(''); // Estado: crea el estado valores desestructurados y su actualizador.
   const [sucursal, setSucursal] = useState(''); // Estado: crea el estado valores desestructurados y su actualizador.
   const [numeroCheque, setNumeroCheque] = useState(''); // Estado: crea el estado valores desestructurados y su actualizador.
+  const [montoCheque, setMontoCheque] = useState('');
   const [fotoCheque, setFotoCheque] = useState(null);
   // Handlers Tarjeta
   // Explica: define handleNumeroTarjetaChange para usarlo en este archivo.
@@ -138,7 +139,7 @@ function AgregarMetodoPagoScreen({ navigation }) {// Explica: define insets usan
     if (activeTab === 'banco') {// Estado: asigna un nuevo valor para mantener sincronizado el flujo.
       isValid = cbu.trim().length === 22 && alias.trim().length > 0 && titularBanco.trim().length > 0;} else // Control: evalua una condicion para decidir el siguiente paso.
       if (activeTab === 'cheque') {// Estado: asigna un nuevo valor para mantener sincronizado el flujo.
-        isValid = bancoCheque.trim().length > 0 && fechaPago.trim().length === 10 && sucursal.trim().length > 0 && numeroCheque.trim().length > 0 && fotoCheque !== null;}
+        isValid = bancoCheque.trim().length > 0 && fechaPago.trim().length === 10 && sucursal.trim().length > 0 && numeroCheque.trim().length > 0 && Number(montoCheque.replace(',', '.')) > 0 && fotoCheque !== null;}
 
   // @API: Envía el formulario al endpoint correspondiente según el tipo seleccionado.
   // Explica: define handleFinalizar para usarlo en este archivo.
@@ -184,6 +185,7 @@ function AgregarMetodoPagoScreen({ navigation }) {// Explica: define insets usan
               fechaPago: `${anio}-${mes}-${dia}`,
               numeroSucursal: sucursal,
               numeroCheque,
+              monto: Number(montoCheque.replace(',', '.')),
               imagen: dataUriFromBase64(fotoCheque?.base64) || undefined
             }); // Estado: actualiza un valor usado por la interfaz.
           setModalConfig({
@@ -271,6 +273,7 @@ function AgregarMetodoPagoScreen({ navigation }) {// Explica: define insets usan
         <View style={styles.cardSection}>
           <Text style={styles.sectionTitle}>Datos del Cheque</Text>
           <Campo label="Nombre del banco" value={bancoCheque} onChangeText={setBancoCheque} placeholder="Ej. Banco Nacion" />
+          <Campo label="Monto del cheque" value={montoCheque} onChangeText={(text) => setMontoCheque(text.replace(/[^0-9.,]/g, ''))} placeholder="Ej. 100000" keyboardType="numeric" />
           <View style={styles.filaDoble}>
             <Campo style={{ flex: 1, marginRight: 6 }} label="Fecha de pago" value={fechaPago} onChangeText={handleFechaPagoChange} placeholder="DD/MM/AAAA" keyboardType="numeric" maxLength={10} />
             <Campo style={{ flex: 1, marginLeft: 6 }} label="Numero de sucursal" value={sucursal} onChangeText={setSucursal} placeholder="Ej. 001" keyboardType="numeric" />

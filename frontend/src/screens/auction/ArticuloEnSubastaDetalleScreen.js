@@ -139,7 +139,10 @@ function ArticuloEnSubastaDetalleScreen({ navigation, route }) {// Explica: defi
         onPress: async () => {// Control: intenta una operacion y maneja errores si falla.
           try {// Estado: actualiza un valor usado por la interfaz.
             setRespondiendo(true); // Explica: define data para usarlo en este archivo.
-            const data = await api.put(ENDPOINTS.PRODUCT_RESPOND(productoId), { action }); // Explica: ejecuta Alert.alert como parte del flujo.
+            const data = await api.put(ENDPOINTS.PRODUCT_RESPOND(productoId), {
+              action,
+              categoriaSubasta: propuesta?.categoriaSubasta || undefined
+            }); // Explica: ejecuta Alert.alert como parte del flujo.
             Alert.alert('Listo', data?.message || 'Respuesta registrada.'); // Explica: ejecuta cargarDetalle como parte del flujo.
             cargarDetalle();
           } catch (err) {// Explica: ejecuta Alert.alert como parte del flujo.
