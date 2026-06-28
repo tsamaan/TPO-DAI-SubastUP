@@ -238,8 +238,8 @@ Todas requieren **Bearer token**.
 
 ### PUT /api/products/:id/approve
 - **Auth:** Bearer + rol `revisor`/`admin` (además debe ser empleado)
-- **Descripción:** Aprueba el producto y genera la propuesta al usuario. La `categoriaSubasta` elegida por WebAdmin queda guardada en la subasta creada; si se reenvía la propuesta, se actualiza la categoría de esa subasta.
-- **Request:** path `:id`; body `precioBase`, `comision?`, `moneda?`, `categoriaSubasta?` (`comun` | `especial` | `plata` | `oro` | `platino`, default `comun`), `fechaSubasta`, `horaSubasta`, `lugarSubasta`, `direccionEnvio?`.
+- **Descripción:** Aprueba el producto y genera la propuesta al usuario. La `categoriaSubasta` elegida por WebAdmin queda guardada en el detalle de la propuesta y en la subasta; al aceptar, el backend vuelve a copiar esa categoría persistida a la subasta.
+- **Request:** path `:id`; body `precioBase`, `comision?`, `moneda?`, `categoriaSubasta` (`comun` | `especial` | `plata` | `oro` | `platino`), `fechaSubasta`, `horaSubasta`, `lugarSubasta`, `direccionEnvio?`.
 - **Respuesta:** `{ ok, message }`.
 - **Errores:** `403` rol no autorizado o no es empleado; `400` faltan datos o categoría inválida; `404` no encontrado.
 

@@ -999,7 +999,7 @@
             "description": "Solo admin/revisor (y empleado).",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"precioBase\": 100000,\n  \"comision\": 10000,\n  \"fechaSubasta\": \"2026-07-10\",\n  \"horaSubasta\": \"15:00\",\n  \"lugarSubasta\": \"Sala Demo\",\n  \"catalogoId\": 1,\n  \"direccionEnvio\": \"Deposito Demo\"\n}",
+              "raw": "{\n  \"precioBase\": 100000,\n  \"comision\": 10000,\n  \"categoriaSubasta\": \"plata\",\n  \"fechaSubasta\": \"2026-07-10\",\n  \"horaSubasta\": \"15:00\",\n  \"lugarSubasta\": \"Sala Demo\",\n  \"catalogoId\": 1,\n  \"direccionEnvio\": \"Deposito Demo\"\n}",
               "options": {
                 "raw": {
                   "language": "json"

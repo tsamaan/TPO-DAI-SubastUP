@@ -13,6 +13,12 @@ const MENSAJE_PROPUESTA_RECHAZADA =
   'Rechazaste la propuesta. El circuito queda cerrado y coordinaremos los próximos pasos si corresponde.';
 const CATEGORIAS_SUBASTA = ['comun', 'especial', 'plata', 'oro', 'platino'];
 
+function normalizarCategoriaSubasta(...valores) {
+  const elegida = valores.find((valor) => valor !== undefined && valor !== null && String(valor).trim() !== '');
+  const normalizada = String(elegida || '').trim().toLowerCase();
+  return CATEGORIAS_SUBASTA.includes(normalizada) ? normalizada : null;
+}
+
 function horaTextoADate(hora = '15:00') {
   const [hh = '15', mm = '00'] = String(hora).split(':');
   const fecha = new Date('1970-01-01T00:00:00.000Z');
@@ -213,7 +219,7 @@ exports.misProductos = async (req, res) => {
             itemId: propuesta.identificador,
             subastaId: propuesta.catalogos?.subasta || null,
             estadoSubasta: propuesta.catalogos?.subastas?.estado || null,
-            categoriaSubasta: propuesta.catalogos?.subastas?.categoria || null,
+            categoriaSubasta: propuesta.detalle?.categoriaSubasta || propuesta.catalogos?.subastas?.categoria || null,
             precioBase: propuesta.precioBase,
             comision: propuesta.comision,
             moneda: propuesta.detalle?.moneda || 'ARS',
@@ -276,7 +282,7 @@ exports.detalleProducto = async (req, res) => {
       itemId: itemPropuesta.identificador,
       subastaId: itemPropuesta.catalogos?.subasta || null,
       estadoSubasta: itemPropuesta.catalogos?.subastas?.estado || null,
-      categoriaSubasta: itemPropuesta.catalogos?.subastas?.categoria || null,
+      categoriaSubasta: itemPropuesta.detalle?.categoriaSubasta || itemPropuesta.catalogos?.subastas?.categoria || null,
       precioBase: itemPropuesta.precioBase,
       comision: itemPropuesta.comision,
       subastado: itemPropuesta.subastado,
@@ -375,6 +381,7 @@ exports.responderPropuesta = async (req, res) => {
         itemsCatalogo: {
           include: {
             catalogos: true,
+            detalle: true,
           },
         },
         detalle: true,
@@ -384,9 +391,17 @@ exports.responderPropuesta = async (req, res) => {
     if (!producto || producto.itemsCatalogo.length === 0)
       return res.status(404).json({ ok: false, message: 'Producto no encontrado o sin propuesta pendiente.' });
 
-    const itemId     = producto.itemsCatalogo[0].identificador;
+    const itemPropuesta = producto.itemsCatalogo[0];
+    const itemId     = itemPropuesta.identificador;
     const nuevoEstado = acepta ? 'confirmado' : 'devuelto';
-    const categoriaConfirmada = String(categoriaSubasta || categoria || categoriaBien || '').trim().toLowerCase();
+    const categoriaConfirmada = normalizarCategoriaSubasta(
+      categoriaSubasta,
+      categoria,
+      categoriaBien,
+      itemPropuesta.detalle?.categoriaSubasta,
+      itemPropuesta.catalogos?.subastas?.categoria,
+      'comun',
+    );
 
     await prisma.$transaction(async (tx) => {
       await tx.productosDetalle.update({
@@ -396,11 +411,14 @@ exports.responderPropuesta = async (req, res) => {
 
       await tx.itemsCatalogoDetalle.update({
         where: { item: itemId },
-        data:  { aceptadoPorDuenio: acepta },
+        data:  {
+          aceptadoPorDuenio: acepta,
+          ...(acepta && categoriaConfirmada ? { categoriaSubasta: categoriaConfirmada } : {}),
+        },
       });
 
-      if (acepta && categoriaConfirmada && CATEGORIAS_SUBASTA.includes(categoriaConfirmada)) {
-        const subastaId = producto.itemsCatalogo[0].catalogos?.subasta;
+      if (acepta && categoriaConfirmada) {
+        const subastaId = itemPropuesta.catalogos?.subasta;
         if (subastaId) {
           await tx.subastas.update({
             where: { identificador: subastaId },
@@ -523,7 +541,7 @@ exports.todosLosProductos = async (req, res) => {
           itemId:            item.identificador,
           precioBase:        item.precioBase,
           comision:          item.comision,
-          categoriaSubasta:  item.catalogos?.subastas?.categoria || null,
+          categoriaSubasta:  item.detalle?.categoriaSubasta || item.catalogos?.subastas?.categoria || null,
           moneda:            item.detalle?.moneda || 'ARS',
           fechaSubasta:      item.detalle?.fechaSubasta || null,
           horaSubasta:       item.detalle?.horaSubasta  || null,
@@ -622,7 +640,7 @@ exports.cambiarEstado = async (req, res) => {
 // PUT /api/products/:id/approve  (revisor/admin)
 // Aprueba el producto, crea la subasta automáticamente y envía
 // propuesta al usuario (estado → esperando_usuario).
-// Body: { precioBase, comision?, moneda?, categoriaSubasta?, fechaSubasta,
+// Body: { precioBase, comision?, moneda?, categoriaSubasta, fechaSubasta,
 //         horaSubasta, lugarSubasta, direccionEnvio? }
 // ─────────────────────────────────────────────────────────────
 exports.aprobarProducto = async (req, res) => {
@@ -646,9 +664,9 @@ exports.aprobarProducto = async (req, res) => {
     if (!precioBase || !fechaSubasta || !horaSubasta || !lugarSubasta)
       return res.status(400).json({ ok: false, message: 'Faltan datos: precioBase, fechaSubasta, horaSubasta, lugarSubasta.' });
 
-    const categoriaNormalizada = String(categoriaSubasta || req.body.categoria || req.body.categoriaBien || 'comun').trim().toLowerCase();
-    if (!CATEGORIAS_SUBASTA.includes(categoriaNormalizada))
-      return res.status(400).json({ ok: false, message: `Categoría inválida. Permitidas: ${CATEGORIAS_SUBASTA.join(', ')}.` });
+    const categoriaNormalizada = normalizarCategoriaSubasta(categoriaSubasta, req.body.categoria, req.body.categoriaBien);
+    if (!categoriaNormalizada)
+      return res.status(400).json({ ok: false, message: `Elegí una categoría válida para el bien. Permitidas: ${CATEGORIAS_SUBASTA.join(', ')}.` });
 
     const empleado = await prisma.empleados.findFirst({ where: { identificador: personaId } });
     if (!empleado)
@@ -684,8 +702,8 @@ exports.aprobarProducto = async (req, res) => {
         });
         await tx.itemsCatalogoDetalle.upsert({
           where:  { item: itemExistente.identificador },
-          create: { item: itemExistente.identificador, moneda, fechaSubasta: new Date(fechaSubasta), horaSubasta, lugarSubasta },
-          update: { moneda, fechaSubasta: new Date(fechaSubasta), horaSubasta, lugarSubasta, cerrado: false, ultimaPuja: null, aceptadoPorDuenio: null },
+          create: { item: itemExistente.identificador, moneda, categoriaSubasta: categoriaNormalizada, fechaSubasta: new Date(fechaSubasta), horaSubasta, lugarSubasta },
+          update: { moneda, categoriaSubasta: categoriaNormalizada, fechaSubasta: new Date(fechaSubasta), horaSubasta, lugarSubasta, cerrado: false, ultimaPuja: null, aceptadoPorDuenio: null },
         });
         const catalogoExistente = await tx.catalogos.findUnique({
           where: { identificador: itemExistente.catalogo },
@@ -735,6 +753,7 @@ exports.aprobarProducto = async (req, res) => {
           data: {
             item:         nuevoItem.identificador,
             moneda,
+            categoriaSubasta: categoriaNormalizada,
             fechaSubasta: new Date(fechaSubasta),
             horaSubasta,
             lugarSubasta,
@@ -901,7 +920,7 @@ exports.misArticulosEnSubastas = async (req, res) => {
         itemId:              propuesta?.identificador || null,
         subastaId:           propuesta?.catalogos?.subasta || null,
         estadoSubasta:       propuesta?.catalogos?.subastas?.estado || null,
-        categoriaSubasta:    propuesta?.catalogos?.subastas?.categoria || null,
+        categoriaSubasta:    propuesta?.detalle?.categoriaSubasta || propuesta?.catalogos?.subastas?.categoria || null,
         nombre:              p.detalle?.nombre || 'Producto',
         descripcionCompleta: p.descripcionCompleta,
         portada:             bufferImagenABase64(foto),

@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react'
 
 // ── Configuración ──────────────────────────────────────────────
 const BASE_URL = import.meta.env.VITE_API_URL || 'https://tpo-dai-subastup.onrender.com'
+// Clave del visor de solo lectura /api/dev/db (no usa el token de admin, sino DEV_KEY).
+const DEV_KEY = import.meta.env.VITE_DEV_KEY || 'subastup-demo'
 
 // ── Colores SubastUp ───────────────────────────────────────────
 const C = {
@@ -277,6 +279,98 @@ function Usuarios({ token, toast }) {
   )
 }
 
+// ── Sección: Categorías (modificar categoría de usuarios aceptados) ──
+function Categorias({ token, toast }) {
+  const [usuarios,  setUsuarios]  = useState([])
+  const [loading,   setLoading]   = useState(true)
+  const [filtro,    setFiltro]    = useState('')
+  const [seleccion, setSeleccion] = useState({})  // { [registroId]: categoria elegida }
+  const [guardando, setGuardando] = useState({})  // { [registroId]: bool }
+
+  const CATEGORIA_COLOR = {
+    comun: C.textoGris, especial: '#1565C0', plata: '#90A4AE', oro: C.amarillo, platino: '#7E57C2',
+  }
+
+  // El listado de usuarios aceptados sale del visor /api/dev/db (protegido por DEV_KEY).
+  const fetchUsuarios = useCallback(async () => {
+    setLoading(true)
+    const data = await api(`/api/dev/db?clave=${encodeURIComponent(DEV_KEY)}`, 'GET', null, token)
+    const aceptados = (data.usuarios || []).filter(u => u.estado === 'aprobado')
+    setUsuarios(aceptados)
+    setSeleccion(Object.fromEntries(aceptados.map(u => [u.identificador, u.categoria || 'comun'])))
+    setLoading(false)
+  }, [token])
+
+  useEffect(() => { fetchUsuarios() }, [fetchUsuarios])
+
+  const guardar = async (registroId) => {
+    const categoria = seleccion[registroId]
+    if (!categoria) return
+    setGuardando(g => ({ ...g, [registroId]: true }))
+    const data = await api('/api/auth/asignar-categoria', 'PUT', { registroId, categoria }, token)
+    setGuardando(g => ({ ...g, [registroId]: false }))
+    if (data.ok) {
+      toast(`Categoría actualizada: ${categoria}`, 'ok')
+      // Reflejar el cambio guardado como nuevo valor base de la fila.
+      setUsuarios(us => us.map(u => u.identificador === registroId ? { ...u, categoria } : u))
+    } else {
+      toast(data.message || 'No se pudo actualizar', 'error')
+    }
+  }
+
+  if (loading) return <p style={{ color: C.textoGris }}>Cargando usuarios...</p>
+
+  const visibles = usuarios.filter(u =>
+    (u.email || '').toLowerCase().includes(filtro.trim().toLowerCase()))
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <input
+        placeholder="Filtrar por email..."
+        value={filtro}
+        onChange={e => setFiltro(e.target.value)}
+        style={{ background: C.bg, border: `1px solid ${C.cardBorder}`, color: C.texto, borderRadius: 6, padding: '8px 12px', fontSize: 13, maxWidth: 360 }}
+      />
+
+      {!visibles.length ? (
+        <p style={{ color: C.textoGris }}>No hay usuarios aceptados para mostrar.</p>
+      ) : visibles.map(u => {
+        const elegida   = seleccion[u.identificador] || 'comun'
+        const sinCambio = elegida === (u.categoria || 'comun')
+        return (
+          <Card key={u.identificador}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+              <div>
+                <p style={{ fontWeight: 700, fontSize: 15 }}>{u.email}</p>
+                <p style={{ color: C.textoGris, fontSize: 13 }}>Rol: {u.rol}</p>
+                <div style={{ marginTop: 8 }}>
+                  <Badge color={CATEGORIA_COLOR[u.categoria] || C.textoGris}>
+                    {u.categoria ? u.categoria.charAt(0).toUpperCase() + u.categoria.slice(1) : 'Sin categoría'}
+                  </Badge>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <select
+                  value={elegida}
+                  onChange={e => setSeleccion(s => ({ ...s, [u.identificador]: e.target.value }))}
+                  style={{ background: C.bg, color: C.texto, border: `1px solid ${C.cardBorder}`, borderRadius: 6, padding: '6px 10px', fontSize: 13 }}
+                >
+                  {['comun','especial','plata','oro','platino'].map(c => (
+                    <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
+                  ))}
+                </select>
+                <Btn small color={C.verde} disabled={sinCambio || guardando[u.identificador]} onClick={() => guardar(u.identificador)}>
+                  {guardando[u.identificador] ? 'Guardando...' : 'Aceptar'}
+                </Btn>
+              </div>
+            </div>
+          </Card>
+        )
+      })}
+    </div>
+  )
+}
+
 // ── Sección: Mensajes/Chat ─────────────────────────────────────
 function Mensajes({ token, toast }) {
   const [convs,    setConvs]    = useState([])
@@ -459,9 +553,12 @@ function Bienes({ token, toast }) {
   const accionPropuesta = async (bien) => {
     const productoId = bien.productoId
     const f = getForm(productoId)
-    const categoriaElegida = f.categoriaSubasta || bien.propuesta?.categoriaSubasta || 'comun'
+    const categoriaElegida = f.categoriaSubasta || bien.propuesta?.categoriaSubasta || ''
     if (!f.precioBase || !f.fechaSubasta || !f.horaSubasta || !f.lugarSubasta) {
       toast('Completá precio base, fecha, hora y lugar', 'error'); return
+    }
+    if (!CATEGORIAS_BIEN.some(c => c.value === categoriaElegida)) {
+      toast('Elegí la categoría del bien', 'error'); return
     }
     setLoadingAction(productoId + '_propuesta')
     const data = await api(`/api/products/${productoId}/approve`, 'PUT', {
@@ -658,10 +755,11 @@ function Bienes({ token, toast }) {
                             <div>
                               <label style={{ fontSize: 11, color: C.textoGris, display: 'block', marginBottom: 3 }}>Categoría del bien *</label>
                               <select
-                                value={f.categoriaSubasta || b.propuesta?.categoriaSubasta || 'comun'}
+                                value={f.categoriaSubasta || b.propuesta?.categoriaSubasta || ''}
                                 onChange={e => setForm(b.productoId, 'categoriaSubasta', e.target.value)}
                                 style={inputSt}
                               >
+                                <option value="">Elegí categoría *</option>
                                 {CATEGORIAS_BIEN.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                               </select>
                             </div>
@@ -733,10 +831,11 @@ function Bienes({ token, toast }) {
                             <div>
                               <label style={{ fontSize: 11, color: C.textoGris, display: 'block', marginBottom: 3 }}>Categoría del bien</label>
                               <select
-                                value={f.categoriaSubasta || b.propuesta?.categoriaSubasta || 'comun'}
+                                value={f.categoriaSubasta || b.propuesta?.categoriaSubasta || ''}
                                 onChange={e => setForm(b.productoId, 'categoriaSubasta', e.target.value)}
                                 style={inputSt}
                               >
+                                <option value="">Elegí categoría</option>
                                 {CATEGORIAS_BIEN.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                               </select>
                             </div>
@@ -855,6 +954,7 @@ function MetodosPago({ token, toast }) {
 // ── App principal ──────────────────────────────────────────────
 const TABS = [
   { id: 'usuarios',  label: '👤 Usuarios' },
+  { id: 'categorias', label: '🏷️ Categorías' },
   { id: 'mensajes',  label: '💬 Mensajes' },
   { id: 'bienes',    label: '📦 Bienes' },
   { id: 'pagos',     label: '💳 Métodos de Pago' },
@@ -937,6 +1037,7 @@ export default function App() {
         </SectionTitle>
 
         {tab === 'usuarios' && <Usuarios token={token} toast={showToast} />}
+        {tab === 'categorias' && <Categorias token={token} toast={showToast} />}
         {tab === 'mensajes' && <Mensajes token={token} toast={showToast} />}
         {tab === 'bienes'   && <Bienes   token={token} toast={showToast} />}
         {tab === 'pagos'    && <MetodosPago token={token} toast={showToast} />}

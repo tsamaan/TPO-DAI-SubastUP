@@ -257,6 +257,7 @@ model ProductosDetalle {
 model ItemsCatalogoDetalle {
   item               Int            @id
   moneda             String         @default("ARS") @db.VarChar(3)
+  categoriaSubasta   String?        @map("categoria_subasta") @db.VarChar(10)
   fechaSubasta       DateTime?      @map("fecha_subasta") @db.Date
   horaSubasta        String?        @map("hora_subasta") @db.VarChar(10)
   lugarSubasta       String?        @map("lugar_subasta") @db.VarChar(350)
