@@ -4,6 +4,7 @@
 const prisma = require('../config/prisma');
 const { fotoARespuesta } = require('../utils/imagenes');
 const { asegurarRolesDominio } = require('../utils/provision');
+const { estadoEfectivoSubasta, esSubastaAbiertaParaPujar } = require('../utils/estadoSubasta');
 
 const TIMER_SEGUNDOS = 60;
 
@@ -75,7 +76,7 @@ exports.getEstadoPuja = async (req, res) => {
       return res.status(404).json({ ok: false, message: 'Ítem no encontrado.' });
 
     let ultimaPujaAt = item.detalle?.ultimaPuja || null;
-    if (!ultimaPujaAt && item.pujos.length > 0 && item.catalogos?.subastas?.estado === 'abierta' && !item.detalle?.cerrado) {
+    if (!ultimaPujaAt && item.pujos.length > 0 && esSubastaAbiertaParaPujar(item.catalogos?.subastas, item.detalle?.cerrado) && !item.detalle?.cerrado) {
       ultimaPujaAt = new Date();
       await prisma.itemsCatalogoDetalle.update({
         where: { item: itemId },
@@ -90,6 +91,7 @@ exports.getEstadoPuja = async (req, res) => {
           message:     'Esta subasta ya finalizó.',
           pujaActual:  item.pujos[0]?.importe || item.precioBase,
           moneda:      item.detalle?.moneda || 'ARS',
+          estado:      estadoEfectivoSubasta(item.catalogos?.subastas, true),
           ganadorId:   item.pujos[0]?.asistentes?.cliente || null,
           categoria:   item.catalogos?.subastas?.categoria || null,
           ultimaPujaAt,
@@ -278,6 +280,7 @@ exports.getEstadoPuja = async (req, res) => {
       descripcion:      item.productos?.descripcionCompleta,
       duenioId:         item.productos?.duenio || null,
       moneda:           item.detalle?.moneda || 'ARS',
+      estado:           estadoEfectivoSubasta(item.catalogos?.subastas, item.detalle?.cerrado),
       categoria:        categoriaSubasta || null,
       precioBase:       item.precioBase,
       pujaActual:       pujaActual,
@@ -343,7 +346,7 @@ exports.pujar = async (req, res) => {
         throw e;
       }
 
-      if (item.catalogos?.subastas?.estado !== 'abierta') {
+      if (!esSubastaAbiertaParaPujar(item.catalogos?.subastas, item.detalle?.cerrado)) {
         const e = new Error('Esta subasta todavía no está activa.');
         e.status = 400;
         e.codigo = 'SUBASTA_NO_ACTIVA';

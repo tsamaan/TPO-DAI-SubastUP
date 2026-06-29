@@ -3,6 +3,7 @@
 
 const prisma = require('../config/prisma');
 const { bufferImagenABase64 } = require('../utils/imagenes');
+const { estadoEfectivoSubasta } = require('../utils/estadoSubasta');
 
 const ESTADOS_SUBASTA_VISIBLES = ['abierta', 'activa', 'activo', 'programada', 'proximamente', 'pendiente'];
 
@@ -21,7 +22,7 @@ function formatearSubasta(s) {
     categoria:      s.categoria,
     // El cierre de SubastUP marca el ítem como cerrado pero no cambia
     // subasta.estado; derivamos 'finalizada' para que la lista muestre el tag.
-    estado:         cerrado ? 'finalizada' : s.estado,
+    estado:         estadoEfectivoSubasta(s, cerrado),
     cerrado,
     nombreArticulo: item?.productos?.detalle?.nombre || null,
     descripcionArticulo: item?.productos?.descripcionCompleta || item?.productos?.descripcionCatalogo || null,
@@ -216,7 +217,7 @@ exports.buscarSubastas = async (req, res) => {
             hora:           s.hora,
             ubicacion:      s.ubicacion,
             categoria:      s.categoria,
-            estado:         s.estado,
+            estado:         estadoEfectivoSubasta(s, false),
             nombreArticulo: item.productos?.detalle?.nombre || null,
             moneda:         item.detalle?.moneda || 'ARS',
             productoId:     item.productos?.identificador,
@@ -283,7 +284,7 @@ exports.detalleSubasta = async (req, res) => {
         hora:      subasta.hora,
         ubicacion: subasta.ubicacion,
         categoria: subasta.categoria,
-        estado:    subasta.estado,
+        estado:    estadoEfectivoSubasta(subasta, false),
         articulos,
       },
     });
