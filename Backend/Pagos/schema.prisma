@@ -1,0 +1,433 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ── Tablas del modelo original ─────────────────────────────────
+
+model Paises {
+  numero       Int        @id
+  nombre       String     @db.VarChar(250)
+  nombreCorto  String?    @db.VarChar(250)
+  capital      String     @db.VarChar(250)
+  nacionalidad String     @db.VarChar(250)
+  idiomas      String     @db.VarChar(150)
+  clientes     Clientes[]
+
+  @@map("paises")
+}
+
+model Personas {
+  identificador Int           @id @default(autoincrement())
+  documento     String        @db.VarChar(20)
+  nombre        String        @db.VarChar(150)
+  telefono      String?       @db.VarChar(20)
+  direccion     String?       @db.VarChar(250)
+  estado        String?       @db.VarChar(15)
+  foto          Bytes?
+  registros     Registros[]
+  empleados     Empleados?
+  subastadores  Subastadores?
+  clientes      Clientes?
+  duenios       Duenios?
+  metodosPago          MetodosPago[]
+  notificaciones       Notificaciones[]
+  pushTokens           PushTokens[]
+  suscripciones        SuscripcionesSubasta[]
+
+  @@map("personas")
+}
+
+model Empleados {
+  identificador Int          @id
+  cargo         String?      @db.VarChar(100)
+  sector        Int?
+  personas      Personas     @relation(fields: [identificador], references: [identificador])
+  sectores      Sectores[]
+  productos     Productos[]
+  catalogos     Catalogos[]
+  clientesVer   Clientes[]   @relation("verificador_clientes")
+  dueniosVer    Duenios[]    @relation("verificador_duenios")
+
+  @@map("empleados")
+}
+
+model Sectores {
+  identificador     Int        @id @default(autoincrement())
+  nombreSector      String     @db.VarChar(150)
+  codigoSector      String?    @db.VarChar(10)
+  responsableSector Int?
+  empleados         Empleados? @relation(fields: [responsableSector], references: [identificador])
+
+  @@map("sectores")
+}
+
+model Seguros {
+  nroPoliza       String      @id @db.VarChar(30)
+  compania        String      @db.VarChar(150)
+  polizaCombinada String?     @db.VarChar(2)
+  importe         Decimal     @db.Decimal(18, 2)
+  productos       Productos[]
+
+  @@map("seguros")
+}
+
+model Subastadores {
+  identificador Int        @id
+  matricula     String?    @db.VarChar(15)
+  region        String?    @db.VarChar(50)
+  personas      Personas   @relation(fields: [identificador], references: [identificador])
+  subastas      Subastas[]
+
+  @@map("subastadores")
+}
+
+model Clientes {
+  identificador     Int                 @id
+  numeroPais        Int?
+  admitido          String?             @db.VarChar(2)
+  categoria         String?             @db.VarChar(10)
+  verificador       Int
+  personas          Personas            @relation(fields: [identificador], references: [identificador])
+  empleados         Empleados           @relation("verificador_clientes", fields: [verificador], references: [identificador])
+  paises            Paises?             @relation(fields: [numeroPais], references: [numero])
+  asistentes        Asistentes[]
+  registroDeSubasta RegistroDeSubasta[]
+
+  @@map("clientes")
+}
+
+model Duenios {
+  identificador          Int                 @id
+  numeroPais             Int?
+  verificacionFinanciera String?             @db.VarChar(2)
+  verificacionJudicial   String?             @db.VarChar(2)
+  calificacionRiesgo     Int?
+  verificador            Int
+  personas               Personas            @relation(fields: [identificador], references: [identificador])
+  empleados              Empleados           @relation("verificador_duenios", fields: [verificador], references: [identificador])
+  productos              Productos[]
+  registroDeSubasta      RegistroDeSubasta[]
+
+  @@map("duenios")
+}
+
+model Subastas {
+  identificador       Int                 @id @default(autoincrement())
+  fecha               DateTime?           @db.Date
+  hora                DateTime?           @db.Time
+  estado              String?             @db.VarChar(10)
+  subastador          Int?
+  ubicacion           String?             @db.VarChar(350)
+  capacidadAsistentes Int?
+  tieneDeposito       String?             @db.VarChar(2)
+  seguridadPropia     String?             @db.VarChar(2)
+  categoria           String?             @db.VarChar(10)
+  subastadores        Subastadores?       @relation(fields: [subastador], references: [identificador])
+  catalogos            Catalogos[]
+  suscripciones        SuscripcionesSubasta[]
+  asistentes          Asistentes[]
+  registroDeSubasta   RegistroDeSubasta[]
+
+  @@map("subastas")
+}
+
+model Productos {
+  identificador       Int             @id @default(autoincrement())
+  nombre              String          @db.VarChar(150)
+  fecha               DateTime?       @db.Date
+  disponible          String?         @db.VarChar(2)
+  // pendiente | en_inspeccion | aprobado | rechazado | esperando_usuario | confirmado | devuelto
+  estado              String          @default("pendiente") @db.VarChar(20)
+  descripcionCatalogo String?         @default("No Posee") @db.VarChar(500)
+  descripcionCompleta String          @db.VarChar(300)
+  motivoRechazo       String?         @db.VarChar(300)
+  direccionEnvio      String?         @db.VarChar(350)
+  revisor             Int?
+  duenio              Int
+  seguro              String?         @db.VarChar(30)
+  empleados           Empleados?      @relation(fields: [revisor], references: [identificador])
+  duenios             Duenios         @relation(fields: [duenio], references: [identificador])
+  seguros             Seguros?        @relation(fields: [seguro], references: [nroPoliza])
+  fotos               Fotos[]
+  itemsCatalogo       ItemsCatalogo[]
+  registroDeSubasta   RegistroDeSubasta[]
+  devoluciones        Devoluciones[]
+  conversaciones      Conversaciones?
+
+  @@map("productos")
+}
+
+model Fotos {
+  identificador Int       @id @default(autoincrement())
+  producto      Int
+  foto          Bytes
+  productos     Productos @relation(fields: [producto], references: [identificador])
+
+  @@map("fotos")
+}
+
+model Devoluciones {
+  identificador      Int       @id @default(autoincrement())
+  producto           Int
+  motivo             String    @db.VarChar(300)
+  cargo              Decimal   @db.Decimal(18, 2)
+  aceptadoPorUsuario Boolean?
+  fecha              DateTime  @default(now())
+  productos          Productos @relation(fields: [producto], references: [identificador])
+
+  @@map("devoluciones")
+}
+
+model Catalogos {
+  identificador Int             @id @default(autoincrement())
+  descripcion   String          @db.VarChar(250)
+  subasta       Int?
+  responsable   Int
+  empleados     Empleados       @relation(fields: [responsable], references: [identificador])
+  subastas      Subastas?       @relation(fields: [subasta], references: [identificador])
+  itemsCatalogo ItemsCatalogo[]
+
+  @@map("catalogos")
+}
+
+model ItemsCatalogo {
+  identificador    Int       @id @default(autoincrement())
+  catalogo         Int
+  producto         Int
+  precioBase       Decimal   @db.Decimal(18, 2)
+  comision         Decimal   @db.Decimal(18, 2)
+  subastado        String?   @db.VarChar(2)
+  // ARS | USD
+  moneda           String    @default("ARS") @db.VarChar(3)
+  fechaSubasta     DateTime? @db.Date
+  horaSubasta      String?   @db.VarChar(10)
+  lugarSubasta     String?   @db.VarChar(350)
+  aceptadoPorDuenio Boolean?
+  ultimaPuja        DateTime?
+  cerrado           Boolean   @default(false)
+  linkStream        String?   @db.VarChar(350)
+  catalogos        Catalogos @relation(fields: [catalogo], references: [identificador])
+  productos        Productos @relation(fields: [producto], references: [identificador])
+  pujos            Pujos[]
+
+  @@map("itemscatalogo")
+}
+
+model Asistentes {
+  identificador Int      @id @default(autoincrement())
+  numeroPostor  Int
+  cliente       Int
+  subasta       Int
+  clientes      Clientes @relation(fields: [cliente], references: [identificador])
+  subastas      Subastas @relation(fields: [subasta], references: [identificador])
+  pujos         Pujos[]
+
+  @@map("asistentes")
+}
+
+model Pujos {
+  identificador Int           @id @default(autoincrement())
+  asistente     Int
+  item          Int
+  importe       Decimal       @db.Decimal(18, 2)
+  ganador       String?       @default("no") @db.VarChar(2)
+  fecha         DateTime      @default(now())
+  asistentes    Asistentes    @relation(fields: [asistente], references: [identificador])
+  itemsCatalogo ItemsCatalogo @relation(fields: [item], references: [identificador])
+
+  @@map("pujos")
+}
+
+model RegistroDeSubasta {
+  identificador Int       @id @default(autoincrement())
+  subasta       Int
+  duenio        Int
+  producto      Int
+  cliente       Int
+  importe       Decimal   @db.Decimal(18, 2)
+  comision      Decimal   @db.Decimal(18, 2)
+  subastas      Subastas  @relation(fields: [subasta], references: [identificador])
+  duenios       Duenios   @relation(fields: [duenio], references: [identificador])
+  productos     Productos @relation(fields: [producto], references: [identificador])
+  clientes      Clientes  @relation(fields: [cliente], references: [identificador])
+
+  @@map("registrodesubasta")
+}
+
+// ── Autenticación ──────────────────────────────────────────────
+
+model Registros {
+  identificador Int        @id @default(autoincrement())
+  persona       Int
+  email         String     @db.VarChar(150)
+  telefono      String?    @db.VarChar(30)
+  tokenVerif    String?    @db.VarChar(200)
+  // pendiente | aprobado | rechazado
+  estado        String     @default("pendiente") @db.VarChar(20)
+  // usuario | revisor | admin
+  rol           String     @default("usuario") @db.VarChar(15)
+  // comun | especial | plata | oro | platino
+  categoria     String     @default("comun") @db.VarChar(10)
+  motivoRechazo String?    @db.VarChar(300)
+  fechaRegistro DateTime   @default(now())
+  personas      Personas   @relation(fields: [persona], references: [identificador])
+  logins        Logins?
+  fotosDNI      FotosDNI[]
+
+  @@index([email])
+  @@map("registros")
+}
+
+model Logins {
+  identificador    Int       @id @default(autoincrement())
+  registro         Int       @unique
+  passwordHash     String    @db.VarChar(512)
+  salt             String    @db.VarChar(100)
+  intentosFallidos Int       @default(0)
+  bloqueado        Boolean   @default(false)
+  ultimoAcceso     DateTime?
+  registros        Registros @relation(fields: [registro], references: [identificador])
+
+  @@index([registro])
+  @@map("logins")
+}
+
+model FotosDNI {
+  identificador Int       @id @default(autoincrement())
+  registro      Int
+  tipo          String    @db.VarChar(10)
+  foto          Bytes
+  registros     Registros @relation(fields: [registro], references: [identificador])
+
+  @@map("fotosdni")
+}
+
+// ── Métodos de pago ────────────────────────────────────────────
+
+model MetodosPago {
+  identificador  Int               @id @default(autoincrement())
+  persona        Int
+  // tarjeta | banco | cheque
+  tipo           String            @db.VarChar(10)
+  activo         Boolean           @default(true)
+  verificado     Boolean           @default(false)
+  fechaCreacion  DateTime          @default(now())
+  personas       Personas          @relation(fields: [persona], references: [identificador])
+  tarjetas       Tarjetas?
+  cuentasBancarias CuentasBancarias?
+  cheques        Cheques?
+
+  @@map("metodospago")
+}
+
+model Tarjetas {
+  identificador   Int         @id
+  titular         String      @db.VarChar(150)
+  numeroTarjeta   String      @db.VarChar(20)
+  mesVencimiento  String      @db.VarChar(2)
+  anioVencimiento String      @db.VarChar(4)
+  codigoSeguridad String      @db.VarChar(4)
+  direccion       String?     @db.VarChar(250)
+  codigoPostal    String?     @db.VarChar(10)
+  pais            String?     @db.VarChar(100)
+  localidad       String?     @db.VarChar(100)
+  metodosPago     MetodosPago @relation(fields: [identificador], references: [identificador])
+
+  @@map("tarjetas")
+}
+
+model CuentasBancarias {
+  identificador Int         @id
+  cbu           String      @db.VarChar(22)
+  alias         String?     @db.VarChar(100)
+  titular       String      @db.VarChar(150)
+  metodosPago   MetodosPago @relation(fields: [identificador], references: [identificador])
+
+  @@map("cuentasbancarias")
+}
+
+model Cheques {
+  identificador  Int         @id
+  nombreBanco    String      @db.VarChar(150)
+  fechaPago      DateTime    @db.Date
+  numeroSucursal String?     @db.VarChar(20)
+  numeroCheque   String      @db.VarChar(30)
+  imagen         Bytes?
+  metodosPago    MetodosPago @relation(fields: [identificador], references: [identificador])
+
+  @@map("cheques")
+}
+
+// ── Notificaciones ─────────────────────────────────────────────
+
+model Notificaciones {
+  identificador Int      @id @default(autoincrement())
+  persona       Int
+  titulo        String   @db.VarChar(100)
+  mensaje       String   @db.VarChar(300)
+  // producto_aprobado | producto_rechazado | subasta_inicio
+  tipo          String   @db.VarChar(30)
+  leido         Boolean  @default(false)
+  fecha         DateTime @default(now())
+  personas      Personas @relation(fields: [persona], references: [identificador])
+
+  @@map("notificaciones")
+}
+
+model PushTokens {
+  identificador Int      @id @default(autoincrement())
+  persona       Int
+  token         String   @db.VarChar(200)
+  activo        Boolean  @default(true)
+  fechaCreacion DateTime @default(now())
+  personas      Personas @relation(fields: [persona], references: [identificador])
+
+  @@map("pushtokens")
+}
+
+model SuscripcionesSubasta {
+  identificador Int      @id @default(autoincrement())
+  persona       Int
+  subasta       Int
+  fecha         DateTime @default(now())
+  personas      Personas @relation(fields: [persona], references: [identificador])
+  subastas      Subastas @relation(fields: [subasta], references: [identificador])
+
+  @@unique([persona, subasta])
+  @@map("suscripcionessubasta")
+}
+
+// ── Chat / Mensajería ───────────────────────────────────────────
+
+model Conversaciones {
+  identificador Int        @id @default(autoincrement())
+  producto      Int        @unique
+  duenio        Int
+  empleado      Int
+  // activo | cerrado
+  estado        String     @default("activo") @db.VarChar(15)
+  fechaCreacion DateTime   @default(now())
+  productos     Productos  @relation(fields: [producto], references: [identificador])
+  mensajes      Mensajes[]
+
+  @@map("conversaciones")
+}
+
+model Mensajes {
+  identificador  Int            @id @default(autoincrement())
+  conversacion   Int
+  emisor         Int
+  texto          String?        @db.VarChar(1000)
+  imagen         Bytes?
+  leido          Boolean        @default(false)
+  fecha          DateTime       @default(now())
+  conversaciones Conversaciones @relation(fields: [conversacion], references: [identificador])
+
+  @@map("mensajes")
+}
